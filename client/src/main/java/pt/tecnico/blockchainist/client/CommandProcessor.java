@@ -37,9 +37,19 @@ public class CommandProcessor {
         Scanner scanner = new Scanner(System.in);
         boolean exit = false;
 
+        // PERGUNTAR AO PROFESSOR: \n depois de "ClientMain"
+        System.out.println();
+
         while (!exit) {
-            System.out.print("\n> ");
+            System.out.print("> ");
             String line = scanner.nextLine().trim();
+
+            // PERGUNTAR AO PROFESSOR: linhas vazias para evitar prompts colados (> > OK 3)
+            if (line.isEmpty()) {
+                System.out.println();
+                continue;
+            }
+
             String[] split = line.split(SPACE);
             try {
                 switch (split[0]) {
@@ -111,9 +121,11 @@ public class CommandProcessor {
 
         try {
             var response = nodes.get(nodeIndex).createWallet(userId, walletId);
-            System.out.println(commandNumber + " OK");
+            System.out.println("OK " + commandNumber);
             System.out.println(response);
         } catch (StatusRuntimeException e) {
+            // PERGUNTAR AO PROFESSOR
+            System.out.println();
             System.err.println(commandNumber + " " + e.getStatus().getDescription());
         }
     }
@@ -130,9 +142,10 @@ public class CommandProcessor {
 
         try {
             var response = nodes.get(nodeIndex).deleteWallet(userId, walletId);
-            System.out.println(commandNumber + " OK");
+            System.out.println("OK " + commandNumber);
             System.out.println(response);
         } catch (StatusRuntimeException e) {
+            System.out.println();
             System.err.println(commandNumber + " " + e.getStatus().getDescription());
         }
     }
@@ -148,9 +161,11 @@ public class CommandProcessor {
 
         try {
             var response = nodes.get(nodeIndex).readBalance(walletId);
-            System.out.println(commandNumber + " OK");
-            System.out.println(response);
+            System.out.println("OK " + commandNumber);
+            System.out.println(response.getBalance());
+            System.out.println();
         } catch (StatusRuntimeException e) {
+            System.out.println();
             System.err.println(commandNumber + " " + e.getStatus().getDescription());
         }
     }
@@ -169,9 +184,10 @@ public class CommandProcessor {
 
         try {
             var response = nodes.get(nodeIndex).transfer(sourceUserId, sourceWalletId, destinationWalletId, amount);
-            System.out.println(commandNumber + " OK");
+            System.out.println("OK " + commandNumber);
             System.out.println(response);
         } catch (StatusRuntimeException e) {
+            System.out.println();
             System.err.println(commandNumber + " " + e.getStatus().getDescription());
         }
     }
@@ -185,9 +201,10 @@ public class CommandProcessor {
 
         try {
             var response = nodes.get(nodeIndex).getBlockchainState();
-            System.out.println(commandNumber + " OK");
+            System.out.println("OK " + commandNumber);
             System.out.println(response);
         } catch (StatusRuntimeException e) {
+            System.out.println();
             System.err.println(commandNumber + " " + e.getStatus().getDescription());
         }
     }
