@@ -1,5 +1,8 @@
 package pt.tecnico.blockchainist.node;
 
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import pt.tecnico.blockchainist.contract.CreateWalletRequest;
@@ -15,11 +18,13 @@ public class NodeSequencerClient implements Runnable {
 
     private final SequencerServiceGrpc.SequencerServiceBlockingStub stub;
     private final NodeState nodeState;
+    private final Map<Transaction, CompletableFuture<Throwable>> pendingTransactions;
     private int nextSeqNumber = 0;
 
-    public NodeSequencerClient(SequencerServiceGrpc.SequencerServiceBlockingStub stub, NodeState nodeState) {
+    public NodeSequencerClient(SequencerServiceGrpc.SequencerServiceBlockingStub stub, NodeState nodeState, Map<Transaction, CompletableFuture<Throwable>> pendingTransactions) {
         this.stub = stub;
         this.nodeState = nodeState;
+        this.pendingTransactions = pendingTransactions;
     }
 
     @Override
@@ -55,6 +60,7 @@ public class NodeSequencerClient implements Runnable {
 
     private void processTransaction(Transaction transaction) {
         nodeState.addTransaction(transaction);
+        Throwable error = null;
         try {
             switch (transaction.getOperationCase()) {
                 case CREATE_WALLET:
@@ -72,7 +78,13 @@ public class NodeSequencerClient implements Runnable {
             }
             System.out.println("Processed transaction: " + transaction);
         } catch (Exception e) {
+            error = e;
             System.err.println("Error processing transaction: " + e.getMessage());
+        }
+        
+        CompletableFuture<Throwable> future = pendingTransactions.remove(transaction);
+        if (future != null) {
+            future.complete(error);
         }
     }
 }

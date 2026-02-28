@@ -1,12 +1,16 @@
 package pt.tecnico.blockchainist.node;
 
 import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import pt.tecnico.blockchainist.contract.SequencerServiceGrpc;
+import pt.tecnico.blockchainist.contract.Transaction;
 import pt.tecnico.blockchainist.node.domain.NodeState;
 
 public class NodeMain {
@@ -29,13 +33,15 @@ public class NodeMain {
         int sequencerPort = Integer.parseInt(sequencerSplit[1]);
 
         final NodeState nodeState = new NodeState();
-        final NodeServiceImpl nodeService = new NodeServiceImpl(nodeState);
 
         // Connect to Sequencer
         ManagedChannel sequencerChannel = ManagedChannelBuilder.forAddress(sequencerHost, sequencerPort).usePlaintext().build();
         SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub = SequencerServiceGrpc.newBlockingStub(sequencerChannel);
 
-        NodeSequencerClient sequencerClient = new NodeSequencerClient(sequencerStub, nodeState);
+        Map<Transaction, CompletableFuture<Throwable>> pendingTransactions = new ConcurrentHashMap<>();
+
+        final NodeServiceImpl nodeService = new NodeServiceImpl(nodeState, sequencerStub, pendingTransactions);
+        NodeSequencerClient sequencerClient = new NodeSequencerClient(sequencerStub, nodeState, pendingTransactions);
         new Thread(sequencerClient).start();
 
         Server server = ServerBuilder.forPort(port).addService(nodeService).build();
