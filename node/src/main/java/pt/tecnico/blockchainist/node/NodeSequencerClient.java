@@ -54,11 +54,23 @@ public class NodeSequencerClient implements Runnable {
     }
 
     private void processTransaction(Transaction transaction) {
+        nodeState.addTransaction(transaction);
         try {
-            // TODO: Implement transaction processing logic mapping Transaction proto to NodeState calls
-            // For now, we just print that we received it.
-            // In the next steps, we will implement the switch case for operations.
-            System.out.println("Received transaction from sequencer: " + transaction);
+            switch (transaction.getOperationCase()) {
+                case CREATE_WALLET:
+                    nodeState.createWallet(transaction.getCreateWallet().getUserId(), transaction.getCreateWallet().getWalletId());
+                    break;
+                case DELETE_WALLET:
+                    nodeState.deleteWallet(transaction.getDeleteWallet().getUserId(), transaction.getDeleteWallet().getWalletId());
+                    break;
+                case TRANSFER:
+                    nodeState.transfer(transaction.getTransfer().getSrcUserId(), transaction.getTransfer().getSrcWalletId(),
+                            transaction.getTransfer().getDstWalletId(), transaction.getTransfer().getValue());
+                    break;
+                default:
+                    System.out.println("Unknown operation: " + transaction.getOperationCase());
+            }
+            System.out.println("Processed transaction: " + transaction);
         } catch (Exception e) {
             System.err.println("Error processing transaction: " + e.getMessage());
         }
