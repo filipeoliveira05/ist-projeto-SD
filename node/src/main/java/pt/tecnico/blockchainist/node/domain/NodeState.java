@@ -1,7 +1,11 @@
 package pt.tecnico.blockchainist.node.domain;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+
+import pt.tecnico.blockchainist.contract.Transaction;
 
 public class NodeState {
     
@@ -11,7 +15,7 @@ public class NodeState {
     private final Map<String, Long> balances = new HashMap<>();
     
     // - The transaction ledger (up to A.2, a chain of individual transactions; after B.1, a chain of blocks)
-    // TODO: Implement ledger
+    private final List<Transaction> blockchain = new ArrayList<>();
 
     public NodeState() {
         // Initialize the state with the central bank wallet
@@ -72,6 +76,12 @@ public class NodeState {
         return balances.get(walletId);
     }
 
-    // TODO Add other operations (e.g., getBlockchainState)
+    public synchronized void addTransaction(Transaction transaction) {
+        blockchain.add(transaction);
+    }
+
+    public synchronized List<Transaction> getBlockchain() {
+        return new ArrayList<>(blockchain);
+    }
 
 }

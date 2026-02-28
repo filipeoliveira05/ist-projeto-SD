@@ -1,5 +1,9 @@
 package pt.tecnico.blockchainist.node;
 
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import pt.tecnico.blockchainist.contract.CreateWalletRequest;
@@ -9,8 +13,11 @@ import pt.tecnico.blockchainist.contract.DeleteWalletResponse;
 import pt.tecnico.blockchainist.contract.GetBlockchainStateRequest;
 import pt.tecnico.blockchainist.contract.GetBlockchainStateResponse;
 import pt.tecnico.blockchainist.contract.NodeServiceGrpc;
+import pt.tecnico.blockchainist.contract.BroadcastRequest;
 import pt.tecnico.blockchainist.contract.ReadBalanceRequest;
 import pt.tecnico.blockchainist.contract.ReadBalanceResponse;
+import pt.tecnico.blockchainist.contract.SequencerServiceGrpc;
+import pt.tecnico.blockchainist.contract.Transaction;
 import pt.tecnico.blockchainist.contract.TransferRequest;
 import pt.tecnico.blockchainist.contract.TransferResponse;
 import pt.tecnico.blockchainist.node.domain.NodeState;
@@ -18,37 +25,69 @@ import pt.tecnico.blockchainist.node.domain.NodeState;
 public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
     private final NodeState nodeState;
+    private final SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub;
+    private final Map<Transaction, CompletableFuture<Throwable>> pendingTransactions;
 
-    public NodeServiceImpl(NodeState nodeState) {
+    public NodeServiceImpl(NodeState nodeState, SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub, Map<Transaction, CompletableFuture<Throwable>> pendingTransactions) {
         this.nodeState = nodeState;
+        this.sequencerStub = sequencerStub;
+        this.pendingTransactions = pendingTransactions;
     }
 
     @Override
     public void createWallet(CreateWalletRequest request, StreamObserver<CreateWalletResponse> responseObserver) {
+        Transaction transaction = Transaction.newBuilder().setCreateWallet(request).build();
+        CompletableFuture<Throwable> future = new CompletableFuture<>();
+        pendingTransactions.put(transaction, future);
+
         try {
-            nodeState.createWallet(request.getUserId(), request.getWalletId());
+            sequencerStub.broadcast(BroadcastRequest.newBuilder().setTransaction(transaction).build());
+            Throwable error = future.get();
+            if (error != null) {
+                throw error;
+            }
             responseObserver.onNext(CreateWalletResponse.getDefaultInstance());
             responseObserver.onCompleted();
-        } catch (IllegalArgumentException e) {
+        } catch (Throwable e) {
+            pendingTransactions.remove(transaction);
+            if (e instanceof ExecutionException) e = e.getCause();
+            if (e instanceof IllegalArgumentException) {
             if (e.getMessage().startsWith("Wallet already exists")) {
                 responseObserver.onError(Status.ALREADY_EXISTS.withDescription(e.getMessage()).asRuntimeException());
             } else {
                 responseObserver.onError(Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asRuntimeException());
+            }
+            } else {
+                responseObserver.onError(Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
             }
         }
     }
 
     @Override
     public void deleteWallet(DeleteWalletRequest request, StreamObserver<DeleteWalletResponse> responseObserver) {
+        Transaction transaction = Transaction.newBuilder().setDeleteWallet(request).build();
+        CompletableFuture<Throwable> future = new CompletableFuture<>();
+        pendingTransactions.put(transaction, future);
+
         try {
-            nodeState.deleteWallet(request.getUserId(), request.getWalletId());
+            sequencerStub.broadcast(BroadcastRequest.newBuilder().setTransaction(transaction).build());
+            Throwable error = future.get();
+            if (error != null) {
+                throw error;
+            }
             responseObserver.onNext(DeleteWalletResponse.getDefaultInstance());
             responseObserver.onCompleted();
-        } catch (IllegalArgumentException e) {
+        } catch (Throwable e) {
+            pendingTransactions.remove(transaction);
+            if (e instanceof ExecutionException) e = e.getCause();
+            if (e instanceof IllegalArgumentException) {
             if (e.getMessage().startsWith("Wallet does not exist")) {
                 responseObserver.onError(Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException());
             } else {
                 responseObserver.onError(Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asRuntimeException());
+            }
+            } else {
+                responseObserver.onError(Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
             }
         }
     }
@@ -71,15 +110,29 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
     @Override
     public void transfer(TransferRequest request, StreamObserver<TransferResponse> responseObserver) {
+        Transaction transaction = Transaction.newBuilder().setTransfer(request).build();
+        CompletableFuture<Throwable> future = new CompletableFuture<>();
+        pendingTransactions.put(transaction, future);
+
         try {
-            nodeState.transfer(request.getSrcUserId(), request.getSrcWalletId(), request.getDstWalletId(), request.getValue());
+            sequencerStub.broadcast(BroadcastRequest.newBuilder().setTransaction(transaction).build());
+            Throwable error = future.get();
+            if (error != null) {
+                throw error;
+            }
             responseObserver.onNext(TransferResponse.getDefaultInstance());
             responseObserver.onCompleted();
-        } catch (IllegalArgumentException e) {
+        } catch (Throwable e) {
+            pendingTransactions.remove(transaction);
+            if (e instanceof ExecutionException) e = e.getCause();
+            if (e instanceof IllegalArgumentException) {
             if (e.getMessage().contains("does not exist")) {
                 responseObserver.onError(Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException());
             } else {
                 responseObserver.onError(Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asRuntimeException());
+            }
+            } else {
+                responseObserver.onError(Status.INTERNAL.withDescription(e.getMessage()).asRuntimeException());
             }
         }
     }
