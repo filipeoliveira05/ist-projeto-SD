@@ -8,13 +8,11 @@ Distributed Systems Project 2026
 
 ### Team Members
 
-_(fill the table below with the team members, and then delete this line)_
-
 | Number | Name              | User                                  | Email                                             |
 | ------ | ----------------- | ------------------------------------- | ------------------------------------------------- |
-| 106900 | Gonçalo Aleixo    | <https://github.com/...>              | <mailto:...@tecnico.ulisboa.pt>                   |
+| 106900 | Gonçalo Aleixo    | <https://github.com/GoncaloAleixo>    | <mailto:goncalofaleixo@tecnico.ulisboa.pt>                   |
 | 110633 | Filipe Oliveira   | <https://github.com/filipeoliveira05> | <mailto:filipe.pinto.oliveira@tecnico.ulisboa.pt> |
-| 110720 | Francisco Andrade | <https://github.com/...>              | <mailto:...@tecnico.ulisboa.pt>                   |
+| 110720 | Francisco Andrade | <https://github.com/xicoo22>          | <mailto:francisco.santos.andrade@tecnico.ulisboa.pt>                   |
 
 ## Getting Started
 
