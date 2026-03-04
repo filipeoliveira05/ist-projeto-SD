@@ -1,3 +1,4 @@
+.
 ├── README.md
 ├── client
 │   ├── pom.xml
@@ -22,7 +23,17 @@
 │   │   ├── CommandProcessor.class
 │   │   └── grpc
 │   │   └── ClientNodeService.class
-│   └── test-classes
+│   ├── client-1.0.0-SNAPSHOT.jar
+│   ├── generated-sources
+│   │   └── annotations
+│   ├── maven-archiver
+│   │   └── pom.properties
+│   └── maven-status
+│   └── maven-compiler-plugin
+│   └── compile
+│   └── default-compile
+│   ├── createdFiles.lst
+│   └── inputFiles.lst
 ├── contract
 │   ├── pom.xml
 │   ├── src
@@ -118,6 +129,7 @@
 │       │                   ├── SequencerServiceGrpc$SequencerServiceStub.class
 │   │   ├── SequencerServiceGrpc.class
 │   │   ├── Transaction$1.class
+│       │                   ├── Transaction$2.class
 │       │                   ├── Transaction$Builder.class
 │   │   ├── Transaction$OperationCase.class
 │       │                   ├── Transaction.class
@@ -130,7 +142,9 @@
 │       │                   ├── TransferResponse$Builder.class
 │   │   ├── TransferResponse.class
 │   │   └── TransferResponseOrBuilder.class
+│   ├── contract-1.0.0-SNAPSHOT.jar
 │   ├── generated-sources
+│   │   ├── annotations
 │   │   └── protobuf
 │   │   ├── grpc-java
 │   │   │   └── pt
@@ -177,6 +191,14 @@
 │   │   ├── TransferRequestOrBuilder.java
 │   │   ├── TransferResponse.java
 │   │   └── TransferResponseOrBuilder.java
+│   ├── maven-archiver
+│   │   └── pom.properties
+│   ├── maven-status
+│   │   └── maven-compiler-plugin
+│   │   └── compile
+│   │   └── default-compile
+│   │   ├── createdFiles.lst
+│   │   └── inputFiles.lst
 │   ├── protoc-dependencies
 │   │   ├── 1dd736ddd8066dc3fee57c8a05f86243
 │   │   │   └── google
@@ -264,11 +286,11 @@
 │   │   ├── postal_address.proto
 │   │   ├── quaternion.proto
 │   │   └── timeofday.proto
-│   ├── protoc-plugins
-│   │   ├── protoc-3.25.1-linux-x86_64.exe
-│   │   └── protoc-gen-grpc-java-1.60.0-linux-x86_64.exe
-│   └── test-classes
+│   └── protoc-plugins
+│   ├── protoc-3.25.1-linux-x86_64.exe
+│   └── protoc-gen-grpc-java-1.60.0-linux-x86_64.exe
 ├── enunciado.md
+├── file-structure.md
 ├── node
 │   ├── pom.xml
 │   ├── src
@@ -279,6 +301,8 @@
 │   │   └── blockchainist
 │   │   └── node
 │   │   ├── NodeMain.java
+│   │   ├── NodeSequencerClient.java
+│   │   ├── NodeServiceImpl.java
 │   │   └── domain
 │   │   └── NodeState.java
 │   └── target
@@ -288,12 +312,57 @@
 │   │   └── blockchainist
 │   │   └── node
 │   │   ├── NodeMain.class
+│   │   ├── NodeSequencerClient$1.class
+│   │   ├── NodeSequencerClient.class
+│   │   ├── NodeServiceImpl.class
 │   │   └── domain
 │   │   └── NodeState.class
-│   └── test-classes
+│   ├── generated-sources
+│   │   └── annotations
+│   ├── maven-archiver
+│   │   └── pom.properties
+│   ├── maven-status
+│   │   └── maven-compiler-plugin
+│   │   └── compile
+│   │   └── default-compile
+│   │   ├── createdFiles.lst
+│   │   └── inputFiles.lst
+│   └── node-1.0.0-SNAPSHOT.jar
 ├── pom.xml
 ├── sequencer
-│   └── pom.xml
+│   ├── pom.xml
+│   ├── src
+│   │   └── main
+│   │   └── java
+│   │   └── pt
+│   │   └── tecnico
+│   │   └── blockchainist
+│   │   └── sequencer
+│   │   ├── SequencerMain.java
+│   │   ├── SequencerServiceImpl.java
+│   │   └── domain
+│   │   └── SequencerState.java
+│   └── target
+│   ├── classes
+│   │   └── pt
+│   │   └── tecnico
+│   │   └── blockchainist
+│   │   └── sequencer
+│   │   ├── SequencerMain.class
+│   │   ├── SequencerServiceImpl.class
+│   │   └── domain
+│   │   └── SequencerState.class
+│   ├── generated-sources
+│   │   └── annotations
+│   ├── maven-archiver
+│   │   └── pom.properties
+│   ├── maven-status
+│   │   └── maven-compiler-plugin
+│   │   └── compile
+│   │   └── default-compile
+│   │   ├── createdFiles.lst
+│   │   └── inputFiles.lst
+│   └── sequencer-1.0.0-SNAPSHOT.jar
 └── tests
 ├── README.md
 ├── inputs
@@ -306,6 +375,11 @@
 │   ├── out02.txt
 │   ├── out03.txt
 │   └── out04.txt
-└── run_tests.sh
+├── run_tests.sh
+└── test-outputs
+├── out01.txt
+├── out02.txt
+├── out03.txt
+└── out04.txt
 
-79 directories, 230 files
+119 directories, 263 files
