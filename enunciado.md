@@ -2,6 +2,12 @@
 
 Este documento descreve o projeto da cadeira de Sistemas Distribuídos 2025/2026.
 
+Histórico de versões:
+
+- v1.2 (03/02/2026): corrigimos incoerências menores com o código inicial (_output_ a imprimir pelo cliente em caso de sucesso; nome da organização nos argumentos recebidos pelo cliente; _system property_ `-Ddebug`).
+- v1.1 (25/02/2026): adicionámos pequenas clarificações e operação `S` passou também a receber argumento de atraso.
+- v1.0 (19/02/2026): publicação do enunciado.
+
 ## 1. Introdução
 
 O objetivo do projeto de Sistemas Distribuídos (SD) é desenvolver uma _permissioned blockchain_, inspirada no desenho do Hyperledger Fabric (versão simplificada de ["Hyperledger fabric: a distributed operating system for permissioned blockchains", Androulaki _et al._](https://doi.org/10.1145/3190508.3190538)), sobre a qual será construída uma criptomoeda simples.
@@ -262,11 +268,14 @@ Por exemplo, para usar o porto 2001, ser um nó da organização "OrgCoin" e lig
 
 ### 5.3. Clientes
 
-O programa do cliente recebe como argumentos os nomes das máquinas e portos dos nós conhecidos pelo cliente. Como é explicado de seguida, para maior flexibilidade de testes, cada comando identifica a qual dos nós conhecidos pelo cliente o pedido respetivo deve ser enviado.
+O programa do cliente recebe como argumentos os nomes das máquinas e portos dos nós conhecidos pelo cliente, assim como as respetivas organizações. Como é explicado de seguida, para maior flexibilidade de testes, cada comando identifica a qual dos nós conhecidos pelo cliente o pedido respetivo deve ser enviado.
 
 Por exemplo, um cliente pode ser lançado assim, ficando a conhecer três nós distintos:
 
-`$ mvn exec:java -Dexec.args="localhost:2001 blockchain.com:3000 moeda.pt:4000"`
+`$ mvn exec:java -Dexec.args="localhost:2001:OrgCoin blockchain.com:3000:OrgCoin moeda.pt:4000:OutraOrg"`
+
+Nota: A componente do argumento que descreve a organização não será utilizada na solução deste projeto.
+Essa informação é passada em argumento pois pode ser útil em funcionalidade futura (fora do âmbito do projeto).
 
 Cada cliente recebe comandos a partir do terminal. Deve mostrar o símbolo _>_ sempre que se encontrarem à espera que um comando seja introduzido.
 
@@ -294,23 +303,23 @@ Alguns exemplos (todos enviados ao 1º nó conhecido, sem atrasos):
 
 ```
 > C Alice cA 0 0
-1 OK
+OK 1
 
 > C Bob cB 0 0
-2 OK
+OK 2
 
 > T BC bc cA 10 0 0
-3 OK
+OK 3
 
 > T Alice cA cB 5 0 0
-4 OK
+OK 4
 
 > S cA 0 0
-5 OK
+OK 5
 5
 
 > S cB 0 0
-6 OK
+OK 6
 5
 
 ```
@@ -371,7 +380,7 @@ Assume-se que:
 
 ### 8.1. Opção de Debug
 
-Todos os processos devem aceitar a opção -debug.
+Todos os processos devem aceitar a _system property_ `-Ddebug`.
 Quando ativada, devem ser impressas mensagens no stderr indicando:
 
 - Receção de pedidos;
