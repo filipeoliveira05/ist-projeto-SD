@@ -315,7 +315,7 @@ public class CommandProcessor {
         }
 
         if (!ID_PATTERN.matcher(split[3]).matches()) {
-            throw new IllegalArgumentException("Expected Destination Wallet ID to be composed of ASCII alphanumeric characters, got \"" + split[1] + "\"");
+            throw new IllegalArgumentException("Expected Destination Wallet ID to be composed of ASCII alphanumeric characters, got \"" + split[3] + "\"");
         }
 
         try {
