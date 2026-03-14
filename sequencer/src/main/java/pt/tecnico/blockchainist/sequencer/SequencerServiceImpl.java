@@ -5,8 +5,11 @@ import pt.tecnico.blockchainist.contract.BroadcastRequest;
 import pt.tecnico.blockchainist.contract.BroadcastResponse;
 import pt.tecnico.blockchainist.contract.DeliverTransactionRequest;
 import pt.tecnico.blockchainist.contract.DeliverTransactionResponse;
+import pt.tecnico.blockchainist.contract.DeliverBlockRequest;
+import pt.tecnico.blockchainist.contract.DeliverBlockResponse;
 import pt.tecnico.blockchainist.contract.SequencerServiceGrpc;
 import pt.tecnico.blockchainist.contract.Transaction;
+import pt.tecnico.blockchainist.contract.Block;
 import pt.tecnico.blockchainist.sequencer.domain.SequencerState;
 
 public class SequencerServiceImpl extends SequencerServiceGrpc.SequencerServiceImplBase {
@@ -33,6 +36,17 @@ public class SequencerServiceImpl extends SequencerServiceGrpc.SequencerServiceI
         DeliverTransactionResponse.Builder responseBuilder = DeliverTransactionResponse.newBuilder();
         if (nextTransaction != null) {
             responseBuilder.setTransaction(nextTransaction);
+        }
+        responseObserver.onNext(responseBuilder.build());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void deliverBlock(DeliverBlockRequest request, StreamObserver<DeliverBlockResponse> responseObserver) {
+        Block block = sequencerState.getBlock(request.getBlockNumber());
+        DeliverBlockResponse.Builder responseBuilder = DeliverBlockResponse.newBuilder();
+        if (block != null) {
+            responseBuilder.setBlock(block);
         }
         responseObserver.onNext(responseBuilder.build());
         responseObserver.onCompleted();
