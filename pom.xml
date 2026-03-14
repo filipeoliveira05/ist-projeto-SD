@@ -14,6 +14,8 @@
         <node.org>OrgCoin</node.org>
 		<sequencer.host>localhost</sequencer.host>
 		<sequencer.port>3001</sequencer.port>
+        <block.max>4</block.max>
+        <block.timeout>5</block.timeout>
 	</properties>
 
 	<!-- Modules are subcomponents of the project. 

@@ -73,6 +73,8 @@
 					<mainClass>${mainclass}</mainClass>
 					<arguments>
 						<argument>${sequencer.port}</argument>
+						<argument>${block.max}</argument>
+						<argument>${block.timeout}</argument>
 					</arguments>
 				</configuration>
 			</plugin>
