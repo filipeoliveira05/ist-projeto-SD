@@ -31,3 +31,8 @@ message Transaction {
     TransferRequest transfer = 3;
   }
 }
+
+message Block {
+  int32 block_number = 1;
+  repeated Transaction transactions = 2;
+}
