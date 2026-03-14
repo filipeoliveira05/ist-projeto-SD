@@ -13,12 +13,22 @@ public class SequencerMain {
         // check arguments
         if (args.length < 1) {
             System.err.println("Argument(s) missing!");
-            System.err.printf("Usage: java %s <port>%n", SequencerMain.class.getName());
+            System.err.printf("Usage: java %s <port> [maxTransactionsPerBlock] [blockTimeoutSeconds]%n", SequencerMain.class.getName());
             return;
         }
 
         final int port = Integer.parseInt(args[0]);
-        final SequencerState sequencerState = new SequencerState();
+        
+        int n = 4;
+        int t = 5;
+        if (args.length >= 2) {
+            n = Integer.parseInt(args[1]);
+        }
+        if (args.length >= 3) {
+            t = Integer.parseInt(args[2]);
+        }
+
+        final SequencerState sequencerState = new SequencerState(n, t);
         final SequencerServiceImpl sequencerService = new SequencerServiceImpl(sequencerState);
 
         Server server = ServerBuilder.forPort(port).addService(sequencerService).build();
