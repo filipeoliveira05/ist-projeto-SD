@@ -6,6 +6,7 @@ import java.util.concurrent.ExecutionException;
 
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
+import pt.tecnico.blockchainist.contract.BroadcastRequest;
 import pt.tecnico.blockchainist.contract.CreateWalletRequest;
 import pt.tecnico.blockchainist.contract.CreateWalletResponse;
 import pt.tecnico.blockchainist.contract.DeleteWalletRequest;
@@ -13,7 +14,6 @@ import pt.tecnico.blockchainist.contract.DeleteWalletResponse;
 import pt.tecnico.blockchainist.contract.GetBlockchainStateRequest;
 import pt.tecnico.blockchainist.contract.GetBlockchainStateResponse;
 import pt.tecnico.blockchainist.contract.NodeServiceGrpc;
-import pt.tecnico.blockchainist.contract.BroadcastRequest;
 import pt.tecnico.blockchainist.contract.ReadBalanceRequest;
 import pt.tecnico.blockchainist.contract.ReadBalanceResponse;
 import pt.tecnico.blockchainist.contract.SequencerServiceGrpc;
@@ -139,8 +139,10 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
     @Override
     public void getBlockchainState(GetBlockchainStateRequest request, StreamObserver<GetBlockchainStateResponse> responseObserver) {
-        // Retorna resposta vazia por enquanto, para a fase A.1
-        responseObserver.onNext(GetBlockchainStateResponse.getDefaultInstance());
+        GetBlockchainStateResponse response = GetBlockchainStateResponse.newBuilder()
+                .addAllTransactions(nodeState.getAllTransactions())
+                .build();
+        responseObserver.onNext(response);
         responseObserver.onCompleted();
     }
 }
