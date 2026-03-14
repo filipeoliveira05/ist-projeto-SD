@@ -3,15 +3,11 @@ package pt.tecnico.blockchainist.node;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
-import pt.tecnico.blockchainist.contract.CreateWalletRequest;
-import pt.tecnico.blockchainist.contract.DeleteWalletRequest;
-import pt.tecnico.blockchainist.contract.DeliverTransactionRequest;
-import pt.tecnico.blockchainist.contract.DeliverTransactionResponse;
+import pt.tecnico.blockchainist.contract.Block;
+import pt.tecnico.blockchainist.contract.DeliverBlockRequest;
+import pt.tecnico.blockchainist.contract.DeliverBlockResponse;
 import pt.tecnico.blockchainist.contract.SequencerServiceGrpc;
 import pt.tecnico.blockchainist.contract.Transaction;
-import pt.tecnico.blockchainist.contract.TransferRequest;
 import pt.tecnico.blockchainist.node.domain.NodeState;
 
 public class NodeSequencerClient implements Runnable {
@@ -19,7 +15,7 @@ public class NodeSequencerClient implements Runnable {
     private final SequencerServiceGrpc.SequencerServiceBlockingStub stub;
     private final NodeState nodeState;
     private final Map<Transaction, CompletableFuture<Throwable>> pendingTransactions;
-    private int nextSeqNumber = 0;
+    private int nextBlockNumber = 0;
 
     public NodeSequencerClient(SequencerServiceGrpc.SequencerServiceBlockingStub stub, NodeState nodeState, Map<Transaction, CompletableFuture<Throwable>> pendingTransactions) {
         this.stub = stub;
@@ -31,15 +27,18 @@ public class NodeSequencerClient implements Runnable {
     public void run() {
         while (true) {
             try {
-                DeliverTransactionRequest request = DeliverTransactionRequest.newBuilder()
-                        .setSequenceNumber(nextSeqNumber)
+                DeliverBlockRequest request = DeliverBlockRequest.newBuilder()
+                        .setBlockNumber(nextBlockNumber)
                         .build();
-                DeliverTransactionResponse response = stub.deliverTransaction(request);
+                DeliverBlockResponse response = stub.deliverBlock(request);
 
-                if (response.hasTransaction()) {
-                    Transaction transaction = response.getTransaction();
-                    processTransaction(transaction);
-                    nextSeqNumber++;
+                if (response.hasBlock()) {
+                    Block block = response.getBlock();
+                    for (Transaction transaction : block.getTransactionsList()) {
+                        processTransaction(transaction);
+                    }
+                    nodeState.addBlock(block);
+                    nextBlockNumber++;
                 } else {
                     Thread.sleep(100); // Polling interval
                 }
@@ -59,7 +58,6 @@ public class NodeSequencerClient implements Runnable {
     }
 
     private void processTransaction(Transaction transaction) {
-        nodeState.addTransaction(transaction);
         Throwable error = null;
         try {
             switch (transaction.getOperationCase()) {
