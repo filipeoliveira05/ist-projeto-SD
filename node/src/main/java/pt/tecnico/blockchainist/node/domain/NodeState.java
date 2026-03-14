@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import pt.tecnico.blockchainist.contract.Block;
 import pt.tecnico.blockchainist.contract.Transaction;
 
 public class NodeState {
@@ -15,7 +16,7 @@ public class NodeState {
     private final Map<String, Long> balances = new HashMap<>();
     
     // - The transaction ledger (up to A.2, a chain of individual transactions; after B.1, a chain of blocks)
-    private final List<Transaction> blockchain = new ArrayList<>();
+    private final List<Block> blockchain = new ArrayList<>();
 
     public NodeState() {
         // Initialize the state with the central bank wallet
@@ -76,12 +77,20 @@ public class NodeState {
         return balances.get(walletId);
     }
 
-    public synchronized void addTransaction(Transaction transaction) {
-        blockchain.add(transaction);
+    public synchronized void addBlock(Block block) {
+        blockchain.add(block);
     }
 
-    public synchronized List<Transaction> getBlockchain() {
+    public synchronized List<Block> getBlockchain() {
         return new ArrayList<>(blockchain);
+    }
+
+    public synchronized List<Transaction> getAllTransactions() {
+        List<Transaction> allTransactions = new ArrayList<>();
+        for (Block block : blockchain) {
+            allTransactions.addAll(block.getTransactionsList());
+        }
+        return allTransactions;
     }
 
 }
