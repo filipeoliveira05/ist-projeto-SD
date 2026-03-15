@@ -119,14 +119,21 @@ public class CommandProcessor {
         Integer nodeIndex = Integer.parseInt(split[3]);
         Integer nodeDelay = Integer.parseInt(split[4]);
 
-        try {
-            var response = nodes.get(nodeIndex).createWallet(userId, walletId, nodeDelay);
-            System.out.println("OK " + commandNumber);
-            System.out.println(response);
-        } catch (StatusRuntimeException e) {
-            // PERGUNTAR AO PROFESSOR
-            System.out.println();
-            System.err.println(commandNumber + " " + e.getStatus().getDescription());
+        if (isBlocking) {
+            try {
+                var response = nodes.get(nodeIndex).createWallet(userId, walletId, nodeDelay);
+                synchronized (System.out) {
+                    System.out.println("OK " + commandNumber);
+                    System.out.println(response);
+                }
+            } catch (StatusRuntimeException e) {
+                synchronized (System.out) {
+                    System.out.println();
+                    System.err.println(commandNumber + " " + e.getStatus().getDescription());
+                }
+            }
+        } else {
+            nodes.get(nodeIndex).createWalletAsync(userId, walletId, nodeDelay, commandNumber);
         }
     }
 
@@ -140,13 +147,21 @@ public class CommandProcessor {
         Integer nodeIndex = Integer.parseInt(split[3]);
         Integer nodeDelay = Integer.parseInt(split[4]);
 
-        try {
-            var response = nodes.get(nodeIndex).deleteWallet(userId, walletId, nodeDelay);
-            System.out.println("OK " + commandNumber);
-            System.out.println(response);
-        } catch (StatusRuntimeException e) {
-            System.out.println();
-            System.err.println(commandNumber + " " + e.getStatus().getDescription());
+        if (isBlocking) {
+            try {
+                var response = nodes.get(nodeIndex).deleteWallet(userId, walletId, nodeDelay);
+                synchronized (System.out) {
+                    System.out.println("OK " + commandNumber);
+                    System.out.println(response);
+                }
+            } catch (StatusRuntimeException e) {
+                synchronized (System.out) {
+                    System.out.println();
+                    System.err.println(commandNumber + " " + e.getStatus().getDescription());
+                }
+            }
+        } else {
+            nodes.get(nodeIndex).deleteWalletAsync(userId, walletId, nodeDelay, commandNumber);
         }
     }
 
@@ -159,14 +174,22 @@ public class CommandProcessor {
         Integer nodeIndex = Integer.parseInt(split[2]);
         Integer nodeDelay = Integer.parseInt(split[3]);
 
-        try {
-            var response = nodes.get(nodeIndex).readBalance(walletId, nodeDelay);
-            System.out.println("OK " + commandNumber);
-            System.out.println(response.getBalance());
-            System.out.println();
-        } catch (StatusRuntimeException e) {
-            System.out.println();
-            System.err.println(commandNumber + " " + e.getStatus().getDescription());
+        if (isBlocking) {
+            try {
+                var response = nodes.get(nodeIndex).readBalance(walletId, nodeDelay);
+                synchronized (System.out) {
+                    System.out.println("OK " + commandNumber);
+                    System.out.println(response.getBalance());
+                    System.out.println();
+                }
+            } catch (StatusRuntimeException e) {
+                synchronized (System.out) {
+                    System.out.println();
+                    System.err.println(commandNumber + " " + e.getStatus().getDescription());
+                }
+            }
+        } else {
+            nodes.get(nodeIndex).readBalanceAsync(walletId, nodeDelay, commandNumber);
         }
     }
 
@@ -182,13 +205,21 @@ public class CommandProcessor {
         Integer nodeIndex = Integer.parseInt(split[5]);
         Integer nodeDelay = Integer.parseInt(split[6]);
 
-        try {
-            var response = nodes.get(nodeIndex).transfer(sourceUserId, sourceWalletId, destinationWalletId, amount, nodeDelay);
-            System.out.println("OK " + commandNumber);
-            System.out.println(response);
-        } catch (StatusRuntimeException e) {
-            System.out.println();
-            System.err.println(commandNumber + " " + e.getStatus().getDescription());
+        if (isBlocking) {
+            try {
+                var response = nodes.get(nodeIndex).transfer(sourceUserId, sourceWalletId, destinationWalletId, amount, nodeDelay);
+                synchronized (System.out) {
+                    System.out.println("OK " + commandNumber);
+                    System.out.println(response);
+                }
+            } catch (StatusRuntimeException e) {
+                synchronized (System.out) {
+                    System.out.println();
+                    System.err.println(commandNumber + " " + e.getStatus().getDescription());
+                }
+            }
+        } else {
+            nodes.get(nodeIndex).transferAsync(sourceUserId, sourceWalletId, destinationWalletId, amount, nodeDelay, commandNumber);
         }
     }
 
