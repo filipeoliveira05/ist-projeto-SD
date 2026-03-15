@@ -120,7 +120,7 @@ public class CommandProcessor {
         Integer nodeDelay = Integer.parseInt(split[4]);
 
         try {
-            var response = nodes.get(nodeIndex).createWallet(userId, walletId);
+            var response = nodes.get(nodeIndex).createWallet(userId, walletId, nodeDelay);
             System.out.println("OK " + commandNumber);
             System.out.println(response);
         } catch (StatusRuntimeException e) {
@@ -141,7 +141,7 @@ public class CommandProcessor {
         Integer nodeDelay = Integer.parseInt(split[4]);
 
         try {
-            var response = nodes.get(nodeIndex).deleteWallet(userId, walletId);
+            var response = nodes.get(nodeIndex).deleteWallet(userId, walletId, nodeDelay);
             System.out.println("OK " + commandNumber);
             System.out.println(response);
         } catch (StatusRuntimeException e) {
@@ -160,7 +160,7 @@ public class CommandProcessor {
         Integer nodeDelay = Integer.parseInt(split[3]);
 
         try {
-            var response = nodes.get(nodeIndex).readBalance(walletId);
+            var response = nodes.get(nodeIndex).readBalance(walletId, nodeDelay);
             System.out.println("OK " + commandNumber);
             System.out.println(response.getBalance());
             System.out.println();
@@ -183,7 +183,7 @@ public class CommandProcessor {
         Integer nodeDelay = Integer.parseInt(split[6]);
 
         try {
-            var response = nodes.get(nodeIndex).transfer(sourceUserId, sourceWalletId, destinationWalletId, amount);
+            var response = nodes.get(nodeIndex).transfer(sourceUserId, sourceWalletId, destinationWalletId, amount, nodeDelay);
             System.out.println("OK " + commandNumber);
             System.out.println(response);
         } catch (StatusRuntimeException e) {

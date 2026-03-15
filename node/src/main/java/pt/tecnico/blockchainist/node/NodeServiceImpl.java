@@ -21,6 +21,7 @@ import pt.tecnico.blockchainist.contract.Transaction;
 import pt.tecnico.blockchainist.contract.TransferRequest;
 import pt.tecnico.blockchainist.contract.TransferResponse;
 import pt.tecnico.blockchainist.node.domain.NodeState;
+import io.grpc.Context;
 
 public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
@@ -34,8 +35,20 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
         this.pendingTransactions = pendingTransactions;
     }
 
+    private void applyDelay() {
+        Integer delay = DelayInterceptor.DELAY_CTX_KEY.get();
+        if (delay != null && delay > 0) {
+            try {
+                Thread.sleep(delay * 1000L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
     @Override
     public void createWallet(CreateWalletRequest request, StreamObserver<CreateWalletResponse> responseObserver) {
+        applyDelay();
         Transaction transaction = Transaction.newBuilder().setCreateWallet(request).build();
         CompletableFuture<Throwable> future = new CompletableFuture<>();
         pendingTransactions.put(transaction, future);
@@ -65,6 +78,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
     @Override
     public void deleteWallet(DeleteWalletRequest request, StreamObserver<DeleteWalletResponse> responseObserver) {
+        applyDelay();
         Transaction transaction = Transaction.newBuilder().setDeleteWallet(request).build();
         CompletableFuture<Throwable> future = new CompletableFuture<>();
         pendingTransactions.put(transaction, future);
@@ -94,6 +108,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
     @Override
     public void readBalance(ReadBalanceRequest request, StreamObserver<ReadBalanceResponse> responseObserver) {
+        applyDelay();
         try {
             long balance = nodeState.readBalance(request.getWalletId());
             ReadBalanceResponse response = ReadBalanceResponse.newBuilder().setBalance(balance).build();
@@ -110,6 +125,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
     @Override
     public void transfer(TransferRequest request, StreamObserver<TransferResponse> responseObserver) {
+        applyDelay();
         Transaction transaction = Transaction.newBuilder().setTransfer(request).build();
         CompletableFuture<Throwable> future = new CompletableFuture<>();
         pendingTransactions.put(transaction, future);
