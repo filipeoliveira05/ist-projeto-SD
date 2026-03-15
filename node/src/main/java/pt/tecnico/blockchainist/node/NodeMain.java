@@ -9,6 +9,7 @@ import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
+import io.grpc.ServerInterceptors;
 import pt.tecnico.blockchainist.contract.SequencerServiceGrpc;
 import pt.tecnico.blockchainist.contract.Transaction;
 import pt.tecnico.blockchainist.node.domain.NodeState;
@@ -44,7 +45,9 @@ public class NodeMain {
         NodeSequencerClient sequencerClient = new NodeSequencerClient(sequencerStub, nodeState, pendingTransactions);
         new Thread(sequencerClient).start();
 
-        Server server = ServerBuilder.forPort(port).addService(nodeService).build();
+        Server server = ServerBuilder.forPort(port)
+                .addService(ServerInterceptors.intercept(nodeService, new DelayInterceptor()))
+                .build();
 
         server.start();
         System.out.println("Server started, listening on " + port);
