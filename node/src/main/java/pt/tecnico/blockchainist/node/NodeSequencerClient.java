@@ -15,12 +15,18 @@ public class NodeSequencerClient implements Runnable {
     private final SequencerServiceGrpc.SequencerServiceBlockingStub stub;
     private final NodeState nodeState;
     private final Map<String, CompletableFuture<Throwable>> pendingTransactions;
+    private final Map<String, RequestResult> completedTransactions;
     private int nextBlockNumber = 0;
 
-    public NodeSequencerClient(SequencerServiceGrpc.SequencerServiceBlockingStub stub, NodeState nodeState, Map<String, CompletableFuture<Throwable>> pendingTransactions) {
+    public NodeSequencerClient(
+            SequencerServiceGrpc.SequencerServiceBlockingStub stub,
+            NodeState nodeState,
+            Map<String, CompletableFuture<Throwable>> pendingTransactions,
+            Map<String, RequestResult> completedTransactions) {
         this.stub = stub;
         this.nodeState = nodeState;
         this.pendingTransactions = pendingTransactions;
+        this.completedTransactions = completedTransactions;
     }
 
     public int syncInitialBlocks() {
@@ -104,8 +110,14 @@ public class NodeSequencerClient implements Runnable {
             error = e;
             System.err.println("Error processing transaction: " + e.getMessage());
         }
-        
-        CompletableFuture<Throwable> future = pendingTransactions.remove(requestId);
+
+        if (requestId != null && !requestId.isBlank()) {
+            completedTransactions.put(requestId, error == null ? RequestResult.success() : RequestResult.failure(error));
+        }
+
+        CompletableFuture<Throwable> future = requestId == null || requestId.isBlank()
+                ? null
+                : pendingTransactions.remove(requestId);
         if (future != null) {
             future.complete(error);
         }
