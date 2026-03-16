@@ -2,11 +2,10 @@ package pt.tecnico.blockchainist.client.grpc;
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
-import io.grpc.ClientInterceptors;
 import io.grpc.Metadata;
-import io.grpc.Status;
 import io.grpc.stub.MetadataUtils;
 import io.grpc.stub.StreamObserver;
+import java.util.concurrent.TimeUnit;
 import pt.tecnico.blockchainist.contract.CreateWalletRequest;
 import pt.tecnico.blockchainist.contract.CreateWalletResponse;
 import pt.tecnico.blockchainist.contract.DeleteWalletRequest;
@@ -23,6 +22,8 @@ public class ClientNodeService {
 
     public static final Metadata.Key<String> DELAY_KEY =
             Metadata.Key.of("delay-seconds", Metadata.ASCII_STRING_MARSHALLER);
+    private static final int MIN_DEADLINE_SECONDS = 5;
+    private static final int DEADLINE_MARGIN_SECONDS = 2;
 
     private final ManagedChannel channel;
     private final NodeServiceGrpc.NodeServiceBlockingStub stub;
@@ -34,90 +35,76 @@ public class ClientNodeService {
         this.asyncStub = NodeServiceGrpc.newStub(channel);
     }
 
+    private long calculateDeadlineSeconds(int delaySeconds) {
+        return Math.max(MIN_DEADLINE_SECONDS, (long) delaySeconds + DEADLINE_MARGIN_SECONDS);
+    }
+
     private NodeServiceGrpc.NodeServiceBlockingStub getStubWithDelay(int delaySeconds) {
+        NodeServiceGrpc.NodeServiceBlockingStub configuredStub = this.stub;
         if (delaySeconds <= 0) {
-            return this.stub;
+            return configuredStub.withDeadlineAfter(calculateDeadlineSeconds(0), TimeUnit.SECONDS);
         }
         Metadata metadata = new Metadata();
         metadata.put(DELAY_KEY, String.valueOf(delaySeconds));
-        return this.stub.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(metadata));
+        configuredStub = configuredStub.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(metadata));
+        return configuredStub.withDeadlineAfter(calculateDeadlineSeconds(delaySeconds), TimeUnit.SECONDS);
     }
 
     private NodeServiceGrpc.NodeServiceStub getAsyncStubWithDelay(int delaySeconds) {
+        NodeServiceGrpc.NodeServiceStub configuredStub = this.asyncStub;
         if (delaySeconds <= 0) {
-            return this.asyncStub;
+            return configuredStub.withDeadlineAfter(calculateDeadlineSeconds(0), TimeUnit.SECONDS);
         }
         Metadata metadata = new Metadata();
         metadata.put(DELAY_KEY, String.valueOf(delaySeconds));
-        return this.asyncStub.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(metadata));
+        configuredStub = configuredStub.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(metadata));
+        return configuredStub.withDeadlineAfter(calculateDeadlineSeconds(delaySeconds), TimeUnit.SECONDS);
     }
 
-    public CreateWalletResponse createWallet(String userId, String walletId, int delaySeconds) {
+    public CreateWalletResponse createWallet(String userId, String walletId, String requestId, int delaySeconds) {
         CreateWalletRequest request = CreateWalletRequest.newBuilder()
                 .setUserId(userId)
                 .setWalletId(walletId)
+                .setRequestId(requestId)
                 .build();
         return getStubWithDelay(delaySeconds).createWallet(request);
     }
 
-    public void createWalletAsync(String userId, String walletId, int delaySeconds, long commandNumber) {
+    public void createWalletAsync(
+            String userId,
+            String walletId,
+            String requestId,
+            int delaySeconds,
+            StreamObserver<CreateWalletResponse> responseObserver) {
         CreateWalletRequest request = CreateWalletRequest.newBuilder()
                 .setUserId(userId)
                 .setWalletId(walletId)
+                .setRequestId(requestId)
                 .build();
-        getAsyncStubWithDelay(delaySeconds).createWallet(request, new StreamObserver<CreateWalletResponse>() {
-            @Override
-            public void onNext(CreateWalletResponse response) {
-                synchronized (System.out) {
-                    System.out.println("OK " + commandNumber);
-                    System.out.println(response);
-                }
-            }
-            @Override
-            public void onError(Throwable t) {
-                Status status = Status.fromThrowable(t);
-                synchronized (System.out) {
-                    System.out.println();
-                    System.err.println(commandNumber + " " + status.getDescription());
-                }
-            }
-            @Override
-            public void onCompleted() {}
-        });
+        getAsyncStubWithDelay(delaySeconds).createWallet(request, responseObserver);
     }
 
-    public DeleteWalletResponse deleteWallet(String userId, String walletId, int delaySeconds) {
+    public DeleteWalletResponse deleteWallet(String userId, String walletId, String requestId, int delaySeconds) {
         DeleteWalletRequest request = DeleteWalletRequest.newBuilder()
                 .setUserId(userId)
                 .setWalletId(walletId)
+                .setRequestId(requestId)
                 .build();
         return getStubWithDelay(delaySeconds).deleteWallet(request);
     }
 
-    public void deleteWalletAsync(String userId, String walletId, int delaySeconds, long commandNumber) {
+    public void deleteWalletAsync(
+            String userId,
+            String walletId,
+            String requestId,
+            int delaySeconds,
+            StreamObserver<DeleteWalletResponse> responseObserver) {
         DeleteWalletRequest request = DeleteWalletRequest.newBuilder()
                 .setUserId(userId)
                 .setWalletId(walletId)
+                .setRequestId(requestId)
                 .build();
-        getAsyncStubWithDelay(delaySeconds).deleteWallet(request, new StreamObserver<DeleteWalletResponse>() {
-            @Override
-            public void onNext(DeleteWalletResponse response) {
-                synchronized (System.out) {
-                    System.out.println("OK " + commandNumber);
-                    System.out.println(response);
-                }
-            }
-            @Override
-            public void onError(Throwable t) {
-                Status status = Status.fromThrowable(t);
-                synchronized (System.out) {
-                    System.out.println();
-                    System.err.println(commandNumber + " " + status.getDescription());
-                }
-            }
-            @Override
-            public void onCompleted() {}
-        });
+        getAsyncStubWithDelay(delaySeconds).deleteWallet(request, responseObserver);
     }
 
     public ReadBalanceResponse readBalance(String walletId, int delaySeconds) {
@@ -127,72 +114,44 @@ public class ClientNodeService {
         return getStubWithDelay(delaySeconds).readBalance(request);
     }
 
-    public void readBalanceAsync(String walletId, int delaySeconds, long commandNumber) {
+    public void readBalanceAsync(String walletId, int delaySeconds, StreamObserver<ReadBalanceResponse> responseObserver) {
         ReadBalanceRequest request = ReadBalanceRequest.newBuilder()
                 .setWalletId(walletId)
                 .build();
-        getAsyncStubWithDelay(delaySeconds).readBalance(request, new StreamObserver<ReadBalanceResponse>() {
-            @Override
-            public void onNext(ReadBalanceResponse response) {
-                synchronized (System.out) {
-                    System.out.println("OK " + commandNumber);
-                    System.out.println(response.getBalance());
-                    System.out.println();
-                }
-            }
-            @Override
-            public void onError(Throwable t) {
-                Status status = Status.fromThrowable(t);
-                synchronized (System.out) {
-                    System.out.println();
-                    System.err.println(commandNumber + " " + status.getDescription());
-                }
-            }
-            @Override
-            public void onCompleted() {}
-        });
+        getAsyncStubWithDelay(delaySeconds).readBalance(request, responseObserver);
     }
 
-    public TransferResponse transfer(String srcUserId, String srcWalletId, String dstWalletId, long amount, int delaySeconds) {
+    public TransferResponse transfer(String srcUserId, String srcWalletId, String dstWalletId, long amount, String requestId, int delaySeconds) {
         TransferRequest request = TransferRequest.newBuilder()
                 .setSrcUserId(srcUserId)
                 .setSrcWalletId(srcWalletId)
                 .setDstWalletId(dstWalletId)
                 .setValue(amount)
+                .setRequestId(requestId)
                 .build();
         return getStubWithDelay(delaySeconds).transfer(request);
     }
 
-    public void transferAsync(String srcUserId, String srcWalletId, String dstWalletId, long amount, int delaySeconds, long commandNumber) {
+    public void transferAsync(
+            String srcUserId,
+            String srcWalletId,
+            String dstWalletId,
+            long amount,
+            String requestId,
+            int delaySeconds,
+            StreamObserver<TransferResponse> responseObserver) {
         TransferRequest request = TransferRequest.newBuilder()
                 .setSrcUserId(srcUserId)
                 .setSrcWalletId(srcWalletId)
                 .setDstWalletId(dstWalletId)
                 .setValue(amount)
+                .setRequestId(requestId)
                 .build();
-        getAsyncStubWithDelay(delaySeconds).transfer(request, new StreamObserver<TransferResponse>() {
-            @Override
-            public void onNext(TransferResponse response) {
-                synchronized (System.out) {
-                    System.out.println("OK " + commandNumber);
-                    System.out.println(response);
-                }
-            }
-            @Override
-            public void onError(Throwable t) {
-                Status status = Status.fromThrowable(t);
-                synchronized (System.out) {
-                    System.out.println();
-                    System.err.println(commandNumber + " " + status.getDescription());
-                }
-            }
-            @Override
-            public void onCompleted() {}
-        });
+        getAsyncStubWithDelay(delaySeconds).transfer(request, responseObserver);
     }
 
     public GetBlockchainStateResponse getBlockchainState() {
         GetBlockchainStateRequest request = GetBlockchainStateRequest.newBuilder().build();
-        return stub.getBlockchainState(request);
+        return stub.withDeadlineAfter(calculateDeadlineSeconds(0), TimeUnit.SECONDS).getBlockchainState(request);
     }
 }

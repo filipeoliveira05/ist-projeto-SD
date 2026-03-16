@@ -2,11 +2,19 @@ package pt.tecnico.blockchainist.client;
 
 import java.util.ArrayList;
 import java.util.Scanner;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
+import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
+import io.grpc.stub.StreamObserver;
 import pt.tecnico.blockchainist.client.grpc.ClientNodeService;
+import pt.tecnico.blockchainist.contract.CreateWalletResponse;
+import pt.tecnico.blockchainist.contract.DeleteWalletResponse;
+import pt.tecnico.blockchainist.contract.ReadBalanceResponse;
+import pt.tecnico.blockchainist.contract.TransferResponse;
 
 public class CommandProcessor {
 
@@ -30,6 +38,102 @@ public class CommandProcessor {
 
     public CommandProcessor(ArrayList<ClientNodeService> nodes) {
         this.nodes = nodes;
+    }
+
+    private static String newRequestId() {
+        return UUID.randomUUID().toString();
+    }
+
+    @FunctionalInterface
+    private interface RetryableNodeCall<T> {
+        T execute(ClientNodeService node) throws StatusRuntimeException;
+    }
+
+    @FunctionalInterface
+    private interface RetryableAsyncNodeCall<T> {
+        void execute(ClientNodeService node, StreamObserver<T> observer);
+    }
+
+    private boolean isSuspectedNodeFailure(StatusRuntimeException e) {
+        Status.Code code = e.getStatus().getCode();
+        return code == Status.Code.UNAVAILABLE || code == Status.Code.DEADLINE_EXCEEDED;
+    }
+
+    private StatusRuntimeException toStatusRuntimeException(Throwable throwable) {
+        if (throwable instanceof StatusRuntimeException) {
+            return (StatusRuntimeException) throwable;
+        }
+        return Status.fromThrowable(throwable).asRuntimeException();
+    }
+
+    private String describeStatus(StatusRuntimeException e) {
+        String description = e.getStatus().getDescription();
+        return (description == null || description.isBlank())
+                ? e.getStatus().getCode().name()
+                : description;
+    }
+
+    private void printCommandError(long commandNumber, StatusRuntimeException e) {
+        synchronized (System.out) {
+            System.out.println();
+            System.err.println(commandNumber + " " + describeStatus(e));
+        }
+    }
+
+    private <T> T invokeWithRoundRobinRetry(int initialNodeIndex, RetryableNodeCall<T> call) throws StatusRuntimeException {
+        int totalNodes = nodes.size();
+        for (int attempt = 0; attempt < totalNodes; attempt++) {
+            int currentNodeIndex = (initialNodeIndex + attempt) % totalNodes;
+            try {
+                return call.execute(nodes.get(currentNodeIndex));
+            } catch (StatusRuntimeException e) {
+                boolean lastAttempt = attempt == totalNodes - 1;
+                if (!isSuspectedNodeFailure(e) || lastAttempt) {
+                    throw e;
+                }
+            }
+        }
+        throw new StatusRuntimeException(Status.UNAVAILABLE.withDescription("All nodes unavailable"));
+    }
+
+    private <T> void invokeAsyncWithRoundRobinRetry(
+            int initialNodeIndex,
+            long commandNumber,
+            RetryableAsyncNodeCall<T> call,
+            Consumer<T> onSuccess) {
+        invokeAsyncWithRoundRobinRetry(initialNodeIndex, 0, commandNumber, call, onSuccess);
+    }
+
+    private <T> void invokeAsyncWithRoundRobinRetry(
+            int initialNodeIndex,
+            int attempt,
+            long commandNumber,
+            RetryableAsyncNodeCall<T> call,
+            Consumer<T> onSuccess) {
+        int totalNodes = nodes.size();
+        int currentNodeIndex = (initialNodeIndex + attempt) % totalNodes;
+
+        call.execute(nodes.get(currentNodeIndex), new StreamObserver<T>() {
+            @Override
+            public void onNext(T value) {
+                onSuccess.accept(value);
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                StatusRuntimeException e = toStatusRuntimeException(throwable);
+                boolean lastAttempt = attempt == totalNodes - 1;
+                if (!lastAttempt && isSuspectedNodeFailure(e)) {
+                    invokeAsyncWithRoundRobinRetry(initialNodeIndex, attempt + 1, commandNumber, call, onSuccess);
+                } else {
+                    printCommandError(commandNumber, e);
+                }
+            }
+
+            @Override
+            public void onCompleted() {
+            }
+        });
     }
 
     void userInputLoop() {
@@ -118,22 +222,31 @@ public class CommandProcessor {
         String walletId = split[2];
         Integer nodeIndex = Integer.parseInt(split[3]);
         Integer nodeDelay = Integer.parseInt(split[4]);
+        String requestId = newRequestId();
 
         if (isBlocking) {
             try {
-                var response = nodes.get(nodeIndex).createWallet(userId, walletId, nodeDelay);
+                var response = invokeWithRoundRobinRetry(
+                        nodeIndex,
+                        node -> node.createWallet(userId, walletId, requestId, nodeDelay));
                 synchronized (System.out) {
                     System.out.println("OK " + commandNumber);
                     System.out.println(response);
                 }
             } catch (StatusRuntimeException e) {
-                synchronized (System.out) {
-                    System.out.println();
-                    System.err.println(commandNumber + " " + e.getStatus().getDescription());
-                }
+                printCommandError(commandNumber, e);
             }
         } else {
-            nodes.get(nodeIndex).createWalletAsync(userId, walletId, nodeDelay, commandNumber);
+            this.<CreateWalletResponse>invokeAsyncWithRoundRobinRetry(
+                    nodeIndex,
+                    commandNumber,
+                    (node, observer) -> node.createWalletAsync(userId, walletId, requestId, nodeDelay, observer),
+                    (CreateWalletResponse response) -> {
+                        synchronized (System.out) {
+                            System.out.println("OK " + commandNumber);
+                            System.out.println(response);
+                        }
+                    });
         }
     }
 
@@ -146,22 +259,31 @@ public class CommandProcessor {
         String walletId = split[2];
         Integer nodeIndex = Integer.parseInt(split[3]);
         Integer nodeDelay = Integer.parseInt(split[4]);
+        String requestId = newRequestId();
 
         if (isBlocking) {
             try {
-                var response = nodes.get(nodeIndex).deleteWallet(userId, walletId, nodeDelay);
+                var response = invokeWithRoundRobinRetry(
+                        nodeIndex,
+                        node -> node.deleteWallet(userId, walletId, requestId, nodeDelay));
                 synchronized (System.out) {
                     System.out.println("OK " + commandNumber);
                     System.out.println(response);
                 }
             } catch (StatusRuntimeException e) {
-                synchronized (System.out) {
-                    System.out.println();
-                    System.err.println(commandNumber + " " + e.getStatus().getDescription());
-                }
+                printCommandError(commandNumber, e);
             }
         } else {
-            nodes.get(nodeIndex).deleteWalletAsync(userId, walletId, nodeDelay, commandNumber);
+            this.<DeleteWalletResponse>invokeAsyncWithRoundRobinRetry(
+                    nodeIndex,
+                    commandNumber,
+                    (node, observer) -> node.deleteWalletAsync(userId, walletId, requestId, nodeDelay, observer),
+                    (DeleteWalletResponse response) -> {
+                        synchronized (System.out) {
+                            System.out.println("OK " + commandNumber);
+                            System.out.println(response);
+                        }
+                    });
         }
     }
 
@@ -176,20 +298,29 @@ public class CommandProcessor {
 
         if (isBlocking) {
             try {
-                var response = nodes.get(nodeIndex).readBalance(walletId, nodeDelay);
+                var response = invokeWithRoundRobinRetry(
+                        nodeIndex,
+                        node -> node.readBalance(walletId, nodeDelay));
                 synchronized (System.out) {
                     System.out.println("OK " + commandNumber);
                     System.out.println(response.getBalance());
                     System.out.println();
                 }
             } catch (StatusRuntimeException e) {
-                synchronized (System.out) {
-                    System.out.println();
-                    System.err.println(commandNumber + " " + e.getStatus().getDescription());
-                }
+                printCommandError(commandNumber, e);
             }
         } else {
-            nodes.get(nodeIndex).readBalanceAsync(walletId, nodeDelay, commandNumber);
+            this.<ReadBalanceResponse>invokeAsyncWithRoundRobinRetry(
+                    nodeIndex,
+                    commandNumber,
+                    (node, observer) -> node.readBalanceAsync(walletId, nodeDelay, observer),
+                    (ReadBalanceResponse response) -> {
+                        synchronized (System.out) {
+                            System.out.println("OK " + commandNumber);
+                            System.out.println(response.getBalance());
+                            System.out.println();
+                        }
+                    });
         }
     }
 
@@ -204,22 +335,31 @@ public class CommandProcessor {
         Long amount = Long.parseLong(split[4]);
         Integer nodeIndex = Integer.parseInt(split[5]);
         Integer nodeDelay = Integer.parseInt(split[6]);
+        String requestId = newRequestId();
 
         if (isBlocking) {
             try {
-                var response = nodes.get(nodeIndex).transfer(sourceUserId, sourceWalletId, destinationWalletId, amount, nodeDelay);
+                var response = invokeWithRoundRobinRetry(
+                        nodeIndex,
+                        node -> node.transfer(sourceUserId, sourceWalletId, destinationWalletId, amount, requestId, nodeDelay));
                 synchronized (System.out) {
                     System.out.println("OK " + commandNumber);
                     System.out.println(response);
                 }
             } catch (StatusRuntimeException e) {
-                synchronized (System.out) {
-                    System.out.println();
-                    System.err.println(commandNumber + " " + e.getStatus().getDescription());
-                }
+                printCommandError(commandNumber, e);
             }
         } else {
-            nodes.get(nodeIndex).transferAsync(sourceUserId, sourceWalletId, destinationWalletId, amount, nodeDelay, commandNumber);
+            this.<TransferResponse>invokeAsyncWithRoundRobinRetry(
+                    nodeIndex,
+                    commandNumber,
+                    (node, observer) -> node.transferAsync(sourceUserId, sourceWalletId, destinationWalletId, amount, requestId, nodeDelay, observer),
+                    (TransferResponse response) -> {
+                        synchronized (System.out) {
+                            System.out.println("OK " + commandNumber);
+                            System.out.println(response);
+                        }
+                    });
         }
     }
 
@@ -231,12 +371,13 @@ public class CommandProcessor {
         Integer nodeIndex = Integer.parseInt(split[1]);
 
         try {
-            var response = nodes.get(nodeIndex).getBlockchainState();
+            var response = invokeWithRoundRobinRetry(
+                    nodeIndex,
+                    ClientNodeService::getBlockchainState);
             System.out.println("OK " + commandNumber);
             System.out.println(response);
         } catch (StatusRuntimeException e) {
-            System.out.println();
-            System.err.println(commandNumber + " " + e.getStatus().getDescription());
+            printCommandError(commandNumber, e);
         }
     }
 

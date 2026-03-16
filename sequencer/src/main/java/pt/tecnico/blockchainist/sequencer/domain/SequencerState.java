@@ -1,7 +1,9 @@
 package pt.tecnico.blockchainist.sequencer.domain;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -15,6 +17,7 @@ public class SequencerState {
     private final List<Block> completedBlocks = new ArrayList<>();
     private List<Transaction> currentBlockTransactions = new ArrayList<>();
     private final List<Transaction> allTransactions = new ArrayList<>(); // kept for retrocompatibility
+    private final Map<String, Integer> requestSequenceNumbers = new HashMap<>();
     
     private final int maxTransactionsPerBlock;
     private final long blockTimeoutMs;
@@ -29,8 +32,19 @@ public class SequencerState {
     }
 
     public synchronized int addTransaction(Transaction transaction) {
+        String requestId = getRequestId(transaction);
+        if (requestId != null && !requestId.isBlank()) {
+            Integer existingSequenceNumber = requestSequenceNumbers.get(requestId);
+            if (existingSequenceNumber != null) {
+                return existingSequenceNumber;
+            }
+        }
+
         int seqNumber = allTransactions.size();
         allTransactions.add(transaction);
+        if (requestId != null && !requestId.isBlank()) {
+            requestSequenceNumbers.put(requestId, seqNumber);
+        }
         
         boolean wasEmpty = currentBlockTransactions.isEmpty();
         currentBlockTransactions.add(transaction);
@@ -48,6 +62,15 @@ public class SequencerState {
         }
         
         return seqNumber;
+    }
+
+    private String getRequestId(Transaction transaction) {
+        return switch (transaction.getOperationCase()) {
+            case CREATE_WALLET -> transaction.getCreateWallet().getRequestId();
+            case DELETE_WALLET -> transaction.getDeleteWallet().getRequestId();
+            case TRANSFER -> transaction.getTransfer().getRequestId();
+            default -> "";
+        };
     }
 
     public synchronized void closeCurrentBlock() {

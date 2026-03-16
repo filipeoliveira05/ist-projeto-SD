@@ -14,35 +14,44 @@ public class NodeSequencerClient implements Runnable {
 
     private final SequencerServiceGrpc.SequencerServiceBlockingStub stub;
     private final NodeState nodeState;
-    private final Map<Transaction, CompletableFuture<Throwable>> pendingTransactions;
+    private final Map<String, CompletableFuture<Throwable>> pendingTransactions;
+    private final Map<String, RequestResult> completedTransactions;
     private int nextBlockNumber = 0;
 
-    public NodeSequencerClient(SequencerServiceGrpc.SequencerServiceBlockingStub stub, NodeState nodeState, Map<Transaction, CompletableFuture<Throwable>> pendingTransactions) {
+    public NodeSequencerClient(
+            SequencerServiceGrpc.SequencerServiceBlockingStub stub,
+            NodeState nodeState,
+            Map<String, CompletableFuture<Throwable>> pendingTransactions,
+            Map<String, RequestResult> completedTransactions) {
         this.stub = stub;
         this.nodeState = nodeState;
         this.pendingTransactions = pendingTransactions;
+        this.completedTransactions = completedTransactions;
     }
 
     public int syncInitialBlocks() {
         return drainAvailableBlocks(0);
     }
 
-    public void setNextBlockNumber(int nextBlockNumber) {
+    public synchronized void setNextBlockNumber(int nextBlockNumber) {
         if (nextBlockNumber < 0) {
             throw new IllegalArgumentException("nextBlockNumber cannot be negative");
         }
         this.nextBlockNumber = nextBlockNumber;
     }
 
+    public synchronized int catchUpToLatest() {
+        catchUpFromCurrentPosition();
+        return nextBlockNumber;
+    }
+
     @Override
     public void run() {
         while (true) {
             try {
-                int drainedUntilBlock = drainAvailableBlocks(nextBlockNumber);
-                if (drainedUntilBlock == nextBlockNumber) {
+                boolean advanced = catchUpFromCurrentPosition();
+                if (!advanced) {
                     Thread.sleep(100); // Polling interval
-                } else {
-                    nextBlockNumber = drainedUntilBlock;
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -57,6 +66,12 @@ public class NodeSequencerClient implements Runnable {
                 }
             }
         }
+    }
+
+    private synchronized boolean catchUpFromCurrentPosition() {
+        int previousBlockNumber = nextBlockNumber;
+        nextBlockNumber = drainAvailableBlocks(previousBlockNumber);
+        return nextBlockNumber != previousBlockNumber;
     }
 
     private int drainAvailableBlocks(int startBlockNumber) {
@@ -83,6 +98,7 @@ public class NodeSequencerClient implements Runnable {
 
     private void processTransaction(Transaction transaction) {
         Throwable error = null;
+        String requestId = getRequestId(transaction);
         try {
             switch (transaction.getOperationCase()) {
                 case CREATE_WALLET:
@@ -103,10 +119,25 @@ public class NodeSequencerClient implements Runnable {
             error = e;
             System.err.println("Error processing transaction: " + e.getMessage());
         }
-        
-        CompletableFuture<Throwable> future = pendingTransactions.remove(transaction);
+
+        if (requestId != null && !requestId.isBlank()) {
+            completedTransactions.put(requestId, error == null ? RequestResult.success() : RequestResult.failure(error));
+        }
+
+        CompletableFuture<Throwable> future = requestId == null || requestId.isBlank()
+                ? null
+                : pendingTransactions.remove(requestId);
         if (future != null) {
             future.complete(error);
         }
+    }
+
+    private String getRequestId(Transaction transaction) {
+        return switch (transaction.getOperationCase()) {
+            case CREATE_WALLET -> transaction.getCreateWallet().getRequestId();
+            case DELETE_WALLET -> transaction.getDeleteWallet().getRequestId();
+            case TRANSFER -> transaction.getTransfer().getRequestId();
+            default -> "";
+        };
     }
 }
