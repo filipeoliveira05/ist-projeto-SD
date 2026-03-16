@@ -1,6 +1,7 @@
 package pt.tecnico.blockchainist.node;
 
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -21,18 +22,45 @@ import pt.tecnico.blockchainist.contract.Transaction;
 import pt.tecnico.blockchainist.contract.TransferRequest;
 import pt.tecnico.blockchainist.contract.TransferResponse;
 import pt.tecnico.blockchainist.node.domain.NodeState;
-import io.grpc.Context;
 
 public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
     private final NodeState nodeState;
     private final SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub;
-    private final Map<Transaction, CompletableFuture<Throwable>> pendingTransactions;
+    private final Map<String, CompletableFuture<Throwable>> pendingTransactions;
 
-    public NodeServiceImpl(NodeState nodeState, SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub, Map<Transaction, CompletableFuture<Throwable>> pendingTransactions) {
+    public NodeServiceImpl(NodeState nodeState, SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub, Map<String, CompletableFuture<Throwable>> pendingTransactions) {
         this.nodeState = nodeState;
         this.sequencerStub = sequencerStub;
         this.pendingTransactions = pendingTransactions;
+    }
+
+    private static String ensureRequestId(String requestId) {
+        return (requestId == null || requestId.isBlank()) ? UUID.randomUUID().toString() : requestId;
+    }
+
+    private static CreateWalletRequest normalizeCreateWalletRequest(CreateWalletRequest request) {
+        String requestId = ensureRequestId(request.getRequestId());
+        if (requestId.equals(request.getRequestId())) {
+            return request;
+        }
+        return request.toBuilder().setRequestId(requestId).build();
+    }
+
+    private static DeleteWalletRequest normalizeDeleteWalletRequest(DeleteWalletRequest request) {
+        String requestId = ensureRequestId(request.getRequestId());
+        if (requestId.equals(request.getRequestId())) {
+            return request;
+        }
+        return request.toBuilder().setRequestId(requestId).build();
+    }
+
+    private static TransferRequest normalizeTransferRequest(TransferRequest request) {
+        String requestId = ensureRequestId(request.getRequestId());
+        if (requestId.equals(request.getRequestId())) {
+            return request;
+        }
+        return request.toBuilder().setRequestId(requestId).build();
     }
 
     private void applyDelay() {
@@ -49,9 +77,11 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
     @Override
     public void createWallet(CreateWalletRequest request, StreamObserver<CreateWalletResponse> responseObserver) {
         applyDelay();
-        Transaction transaction = Transaction.newBuilder().setCreateWallet(request).build();
+        CreateWalletRequest normalizedRequest = normalizeCreateWalletRequest(request);
+        String requestId = normalizedRequest.getRequestId();
+        Transaction transaction = Transaction.newBuilder().setCreateWallet(normalizedRequest).build();
         CompletableFuture<Throwable> future = new CompletableFuture<>();
-        pendingTransactions.put(transaction, future);
+        pendingTransactions.put(requestId, future);
 
         try {
             sequencerStub.broadcast(BroadcastRequest.newBuilder().setTransaction(transaction).build());
@@ -62,7 +92,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             responseObserver.onNext(CreateWalletResponse.getDefaultInstance());
             responseObserver.onCompleted();
         } catch (Throwable e) {
-            pendingTransactions.remove(transaction);
+            pendingTransactions.remove(requestId);
             if (e instanceof ExecutionException) e = e.getCause();
             if (e instanceof IllegalArgumentException) {
             if (e.getMessage().startsWith("Wallet already exists")) {
@@ -79,9 +109,11 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
     @Override
     public void deleteWallet(DeleteWalletRequest request, StreamObserver<DeleteWalletResponse> responseObserver) {
         applyDelay();
-        Transaction transaction = Transaction.newBuilder().setDeleteWallet(request).build();
+        DeleteWalletRequest normalizedRequest = normalizeDeleteWalletRequest(request);
+        String requestId = normalizedRequest.getRequestId();
+        Transaction transaction = Transaction.newBuilder().setDeleteWallet(normalizedRequest).build();
         CompletableFuture<Throwable> future = new CompletableFuture<>();
-        pendingTransactions.put(transaction, future);
+        pendingTransactions.put(requestId, future);
 
         try {
             sequencerStub.broadcast(BroadcastRequest.newBuilder().setTransaction(transaction).build());
@@ -92,7 +124,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             responseObserver.onNext(DeleteWalletResponse.getDefaultInstance());
             responseObserver.onCompleted();
         } catch (Throwable e) {
-            pendingTransactions.remove(transaction);
+            pendingTransactions.remove(requestId);
             if (e instanceof ExecutionException) e = e.getCause();
             if (e instanceof IllegalArgumentException) {
             if (e.getMessage().startsWith("Wallet does not exist")) {
@@ -126,9 +158,11 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
     @Override
     public void transfer(TransferRequest request, StreamObserver<TransferResponse> responseObserver) {
         applyDelay();
-        Transaction transaction = Transaction.newBuilder().setTransfer(request).build();
+        TransferRequest normalizedRequest = normalizeTransferRequest(request);
+        String requestId = normalizedRequest.getRequestId();
+        Transaction transaction = Transaction.newBuilder().setTransfer(normalizedRequest).build();
         CompletableFuture<Throwable> future = new CompletableFuture<>();
-        pendingTransactions.put(transaction, future);
+        pendingTransactions.put(requestId, future);
 
         try {
             sequencerStub.broadcast(BroadcastRequest.newBuilder().setTransaction(transaction).build());
@@ -139,7 +173,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             responseObserver.onNext(TransferResponse.getDefaultInstance());
             responseObserver.onCompleted();
         } catch (Throwable e) {
-            pendingTransactions.remove(transaction);
+            pendingTransactions.remove(requestId);
             if (e instanceof ExecutionException) e = e.getCause();
             if (e instanceof IllegalArgumentException) {
             if (e.getMessage().contains("does not exist")) {

@@ -11,7 +11,6 @@ import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerInterceptors;
 import pt.tecnico.blockchainist.contract.SequencerServiceGrpc;
-import pt.tecnico.blockchainist.contract.Transaction;
 import pt.tecnico.blockchainist.node.domain.NodeState;
 
 public class NodeMain {
@@ -39,7 +38,7 @@ public class NodeMain {
         ManagedChannel sequencerChannel = ManagedChannelBuilder.forAddress(sequencerHost, sequencerPort).usePlaintext().build();
         SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub = SequencerServiceGrpc.newBlockingStub(sequencerChannel);
 
-        Map<Transaction, CompletableFuture<Throwable>> pendingTransactions = new ConcurrentHashMap<>();
+        Map<String, CompletableFuture<Throwable>> pendingTransactions = new ConcurrentHashMap<>();
 
         final NodeServiceImpl nodeService = new NodeServiceImpl(nodeState, sequencerStub, pendingTransactions);
         NodeSequencerClient sequencerClient = new NodeSequencerClient(sequencerStub, nodeState, pendingTransactions);

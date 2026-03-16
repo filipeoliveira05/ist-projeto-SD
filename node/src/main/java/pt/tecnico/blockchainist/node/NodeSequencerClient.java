@@ -14,10 +14,10 @@ public class NodeSequencerClient implements Runnable {
 
     private final SequencerServiceGrpc.SequencerServiceBlockingStub stub;
     private final NodeState nodeState;
-    private final Map<Transaction, CompletableFuture<Throwable>> pendingTransactions;
+    private final Map<String, CompletableFuture<Throwable>> pendingTransactions;
     private int nextBlockNumber = 0;
 
-    public NodeSequencerClient(SequencerServiceGrpc.SequencerServiceBlockingStub stub, NodeState nodeState, Map<Transaction, CompletableFuture<Throwable>> pendingTransactions) {
+    public NodeSequencerClient(SequencerServiceGrpc.SequencerServiceBlockingStub stub, NodeState nodeState, Map<String, CompletableFuture<Throwable>> pendingTransactions) {
         this.stub = stub;
         this.nodeState = nodeState;
         this.pendingTransactions = pendingTransactions;
@@ -83,6 +83,7 @@ public class NodeSequencerClient implements Runnable {
 
     private void processTransaction(Transaction transaction) {
         Throwable error = null;
+        String requestId = getRequestId(transaction);
         try {
             switch (transaction.getOperationCase()) {
                 case CREATE_WALLET:
@@ -104,9 +105,18 @@ public class NodeSequencerClient implements Runnable {
             System.err.println("Error processing transaction: " + e.getMessage());
         }
         
-        CompletableFuture<Throwable> future = pendingTransactions.remove(transaction);
+        CompletableFuture<Throwable> future = pendingTransactions.remove(requestId);
         if (future != null) {
             future.complete(error);
         }
+    }
+
+    private String getRequestId(Transaction transaction) {
+        return switch (transaction.getOperationCase()) {
+            case CREATE_WALLET -> transaction.getCreateWallet().getRequestId();
+            case DELETE_WALLET -> transaction.getDeleteWallet().getRequestId();
+            case TRANSFER -> transaction.getTransfer().getRequestId();
+            default -> "";
+        };
     }
 }
