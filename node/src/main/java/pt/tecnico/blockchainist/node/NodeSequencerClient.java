@@ -24,8 +24,14 @@ public class NodeSequencerClient implements Runnable {
     }
 
     public int syncInitialBlocks() {
-        nextBlockNumber = drainAvailableBlocks(nextBlockNumber);
-        return nextBlockNumber;
+        return drainAvailableBlocks(0);
+    }
+
+    public void setNextBlockNumber(int nextBlockNumber) {
+        if (nextBlockNumber < 0) {
+            throw new IllegalArgumentException("nextBlockNumber cannot be negative");
+        }
+        this.nextBlockNumber = nextBlockNumber;
     }
 
     @Override
