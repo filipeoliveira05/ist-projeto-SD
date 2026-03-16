@@ -152,6 +152,6 @@ public class ClientNodeService {
 
     public GetBlockchainStateResponse getBlockchainState() {
         GetBlockchainStateRequest request = GetBlockchainStateRequest.newBuilder().build();
-        return stub.getBlockchainState(request);
+        return stub.withDeadlineAfter(calculateDeadlineSeconds(0), TimeUnit.SECONDS).getBlockchainState(request);
     }
 }

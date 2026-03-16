@@ -54,7 +54,7 @@ public class CommandProcessor {
         void execute(ClientNodeService node, StreamObserver<T> observer);
     }
 
-    private boolean isRetryableStatus(StatusRuntimeException e) {
+    private boolean isSuspectedNodeFailure(StatusRuntimeException e) {
         Status.Code code = e.getStatus().getCode();
         return code == Status.Code.UNAVAILABLE || code == Status.Code.DEADLINE_EXCEEDED;
     }
@@ -66,10 +66,17 @@ public class CommandProcessor {
         return Status.fromThrowable(throwable).asRuntimeException();
     }
 
+    private String describeStatus(StatusRuntimeException e) {
+        String description = e.getStatus().getDescription();
+        return (description == null || description.isBlank())
+                ? e.getStatus().getCode().name()
+                : description;
+    }
+
     private void printCommandError(long commandNumber, StatusRuntimeException e) {
         synchronized (System.out) {
             System.out.println();
-            System.err.println(commandNumber + " " + e.getStatus().getDescription());
+            System.err.println(commandNumber + " " + describeStatus(e));
         }
     }
 
@@ -81,7 +88,7 @@ public class CommandProcessor {
                 return call.execute(nodes.get(currentNodeIndex));
             } catch (StatusRuntimeException e) {
                 boolean lastAttempt = attempt == totalNodes - 1;
-                if (!isRetryableStatus(e) || lastAttempt) {
+                if (!isSuspectedNodeFailure(e) || lastAttempt) {
                     throw e;
                 }
             }
@@ -116,7 +123,7 @@ public class CommandProcessor {
             public void onError(Throwable throwable) {
                 StatusRuntimeException e = toStatusRuntimeException(throwable);
                 boolean lastAttempt = attempt == totalNodes - 1;
-                if (!lastAttempt && isRetryableStatus(e)) {
+                if (!lastAttempt && isSuspectedNodeFailure(e)) {
                     invokeAsyncWithRoundRobinRetry(initialNodeIndex, attempt + 1, commandNumber, call, onSuccess);
                 } else {
                     printCommandError(commandNumber, e);
@@ -364,12 +371,13 @@ public class CommandProcessor {
         Integer nodeIndex = Integer.parseInt(split[1]);
 
         try {
-            var response = nodes.get(nodeIndex).getBlockchainState();
+            var response = invokeWithRoundRobinRetry(
+                    nodeIndex,
+                    ClientNodeService::getBlockchainState);
             System.out.println("OK " + commandNumber);
             System.out.println(response);
         } catch (StatusRuntimeException e) {
-            System.out.println();
-            System.err.println(commandNumber + " " + e.getStatus().getDescription());
+            printCommandError(commandNumber, e);
         }
     }
 
