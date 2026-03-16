@@ -23,6 +23,11 @@ public class NodeSequencerClient implements Runnable {
         this.pendingTransactions = pendingTransactions;
     }
 
+    public int syncInitialBlocks() {
+        nextBlockNumber = drainAvailableBlocks(nextBlockNumber);
+        return nextBlockNumber;
+    }
+
     @Override
     public void run() {
         while (true) {
