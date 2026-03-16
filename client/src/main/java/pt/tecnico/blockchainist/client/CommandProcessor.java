@@ -4,11 +4,17 @@ import java.util.ArrayList;
 import java.util.Scanner;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
+import io.grpc.stub.StreamObserver;
 import pt.tecnico.blockchainist.client.grpc.ClientNodeService;
+import pt.tecnico.blockchainist.contract.CreateWalletResponse;
+import pt.tecnico.blockchainist.contract.DeleteWalletResponse;
+import pt.tecnico.blockchainist.contract.ReadBalanceResponse;
+import pt.tecnico.blockchainist.contract.TransferResponse;
 
 public class CommandProcessor {
 
@@ -43,9 +49,28 @@ public class CommandProcessor {
         T execute(ClientNodeService node) throws StatusRuntimeException;
     }
 
+    @FunctionalInterface
+    private interface RetryableAsyncNodeCall<T> {
+        void execute(ClientNodeService node, StreamObserver<T> observer);
+    }
+
     private boolean isRetryableStatus(StatusRuntimeException e) {
         Status.Code code = e.getStatus().getCode();
         return code == Status.Code.UNAVAILABLE || code == Status.Code.DEADLINE_EXCEEDED;
+    }
+
+    private StatusRuntimeException toStatusRuntimeException(Throwable throwable) {
+        if (throwable instanceof StatusRuntimeException) {
+            return (StatusRuntimeException) throwable;
+        }
+        return Status.fromThrowable(throwable).asRuntimeException();
+    }
+
+    private void printCommandError(long commandNumber, StatusRuntimeException e) {
+        synchronized (System.out) {
+            System.out.println();
+            System.err.println(commandNumber + " " + e.getStatus().getDescription());
+        }
     }
 
     private <T> T invokeWithRoundRobinRetry(int initialNodeIndex, RetryableNodeCall<T> call) throws StatusRuntimeException {
@@ -62,6 +87,46 @@ public class CommandProcessor {
             }
         }
         throw new StatusRuntimeException(Status.UNAVAILABLE.withDescription("All nodes unavailable"));
+    }
+
+    private <T> void invokeAsyncWithRoundRobinRetry(
+            int initialNodeIndex,
+            long commandNumber,
+            RetryableAsyncNodeCall<T> call,
+            Consumer<T> onSuccess) {
+        invokeAsyncWithRoundRobinRetry(initialNodeIndex, 0, commandNumber, call, onSuccess);
+    }
+
+    private <T> void invokeAsyncWithRoundRobinRetry(
+            int initialNodeIndex,
+            int attempt,
+            long commandNumber,
+            RetryableAsyncNodeCall<T> call,
+            Consumer<T> onSuccess) {
+        int totalNodes = nodes.size();
+        int currentNodeIndex = (initialNodeIndex + attempt) % totalNodes;
+
+        call.execute(nodes.get(currentNodeIndex), new StreamObserver<T>() {
+            @Override
+            public void onNext(T value) {
+                onSuccess.accept(value);
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                StatusRuntimeException e = toStatusRuntimeException(throwable);
+                boolean lastAttempt = attempt == totalNodes - 1;
+                if (!lastAttempt && isRetryableStatus(e)) {
+                    invokeAsyncWithRoundRobinRetry(initialNodeIndex, attempt + 1, commandNumber, call, onSuccess);
+                } else {
+                    printCommandError(commandNumber, e);
+                }
+            }
+
+            @Override
+            public void onCompleted() {
+            }
+        });
     }
 
     void userInputLoop() {
@@ -162,13 +227,19 @@ public class CommandProcessor {
                     System.out.println(response);
                 }
             } catch (StatusRuntimeException e) {
-                synchronized (System.out) {
-                    System.out.println();
-                    System.err.println(commandNumber + " " + e.getStatus().getDescription());
-                }
+                printCommandError(commandNumber, e);
             }
         } else {
-            nodes.get(nodeIndex).createWalletAsync(userId, walletId, requestId, nodeDelay, commandNumber);
+            this.<CreateWalletResponse>invokeAsyncWithRoundRobinRetry(
+                    nodeIndex,
+                    commandNumber,
+                    (node, observer) -> node.createWalletAsync(userId, walletId, requestId, nodeDelay, observer),
+                    (CreateWalletResponse response) -> {
+                        synchronized (System.out) {
+                            System.out.println("OK " + commandNumber);
+                            System.out.println(response);
+                        }
+                    });
         }
     }
 
@@ -193,13 +264,19 @@ public class CommandProcessor {
                     System.out.println(response);
                 }
             } catch (StatusRuntimeException e) {
-                synchronized (System.out) {
-                    System.out.println();
-                    System.err.println(commandNumber + " " + e.getStatus().getDescription());
-                }
+                printCommandError(commandNumber, e);
             }
         } else {
-            nodes.get(nodeIndex).deleteWalletAsync(userId, walletId, requestId, nodeDelay, commandNumber);
+            this.<DeleteWalletResponse>invokeAsyncWithRoundRobinRetry(
+                    nodeIndex,
+                    commandNumber,
+                    (node, observer) -> node.deleteWalletAsync(userId, walletId, requestId, nodeDelay, observer),
+                    (DeleteWalletResponse response) -> {
+                        synchronized (System.out) {
+                            System.out.println("OK " + commandNumber);
+                            System.out.println(response);
+                        }
+                    });
         }
     }
 
@@ -223,13 +300,20 @@ public class CommandProcessor {
                     System.out.println();
                 }
             } catch (StatusRuntimeException e) {
-                synchronized (System.out) {
-                    System.out.println();
-                    System.err.println(commandNumber + " " + e.getStatus().getDescription());
-                }
+                printCommandError(commandNumber, e);
             }
         } else {
-            nodes.get(nodeIndex).readBalanceAsync(walletId, nodeDelay, commandNumber);
+            this.<ReadBalanceResponse>invokeAsyncWithRoundRobinRetry(
+                    nodeIndex,
+                    commandNumber,
+                    (node, observer) -> node.readBalanceAsync(walletId, nodeDelay, observer),
+                    (ReadBalanceResponse response) -> {
+                        synchronized (System.out) {
+                            System.out.println("OK " + commandNumber);
+                            System.out.println(response.getBalance());
+                            System.out.println();
+                        }
+                    });
         }
     }
 
@@ -256,13 +340,19 @@ public class CommandProcessor {
                     System.out.println(response);
                 }
             } catch (StatusRuntimeException e) {
-                synchronized (System.out) {
-                    System.out.println();
-                    System.err.println(commandNumber + " " + e.getStatus().getDescription());
-                }
+                printCommandError(commandNumber, e);
             }
         } else {
-            nodes.get(nodeIndex).transferAsync(sourceUserId, sourceWalletId, destinationWalletId, amount, requestId, nodeDelay, commandNumber);
+            this.<TransferResponse>invokeAsyncWithRoundRobinRetry(
+                    nodeIndex,
+                    commandNumber,
+                    (node, observer) -> node.transferAsync(sourceUserId, sourceWalletId, destinationWalletId, amount, requestId, nodeDelay, observer),
+                    (TransferResponse response) -> {
+                        synchronized (System.out) {
+                            System.out.println("OK " + commandNumber);
+                            System.out.println(response);
+                        }
+                    });
         }
     }
 
