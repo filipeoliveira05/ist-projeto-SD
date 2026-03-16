@@ -27,16 +27,19 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
     private final NodeState nodeState;
     private final SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub;
+    private final NodeSequencerClient sequencerClient;
     private final Map<String, CompletableFuture<Throwable>> pendingTransactions;
     private final Map<String, RequestResult> completedTransactions;
 
     public NodeServiceImpl(
             NodeState nodeState,
             SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub,
+            NodeSequencerClient sequencerClient,
             Map<String, CompletableFuture<Throwable>> pendingTransactions,
             Map<String, RequestResult> completedTransactions) {
         this.nodeState = nodeState;
         this.sequencerStub = sequencerStub;
+        this.sequencerClient = sequencerClient;
         this.pendingTransactions = pendingTransactions;
         this.completedTransactions = completedTransactions;
     }
@@ -200,16 +203,22 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
     public void readBalance(ReadBalanceRequest request, StreamObserver<ReadBalanceResponse> responseObserver) {
         applyDelay();
         try {
+            // Ensure reads observe all currently available ordered blocks before replying.
+            sequencerClient.catchUpToLatest();
             long balance = nodeState.readBalance(request.getWalletId());
             ReadBalanceResponse response = ReadBalanceResponse.newBuilder().setBalance(balance).build();
             responseObserver.onNext(response);
             responseObserver.onCompleted();
+        } catch (io.grpc.StatusRuntimeException e) {
+            responseObserver.onError(e);
         } catch (IllegalArgumentException e) {
             if (e.getMessage().startsWith("Wallet does not exist")) {
                 responseObserver.onError(Status.NOT_FOUND.withDescription(e.getMessage()).asRuntimeException());
             } else {
                 responseObserver.onError(Status.INVALID_ARGUMENT.withDescription(e.getMessage()).asRuntimeException());
             }
+        } catch (Exception e) {
+            responseObserver.onError(Status.INTERNAL.withDescription(describe(e)).asRuntimeException());
         }
     }
 
@@ -234,10 +243,18 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
     @Override
     public void getBlockchainState(GetBlockchainStateRequest request, StreamObserver<GetBlockchainStateResponse> responseObserver) {
-        GetBlockchainStateResponse response = GetBlockchainStateResponse.newBuilder()
-                .addAllTransactions(nodeState.getAllTransactions())
-                .build();
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
+        try {
+            // Keep debug reads consistent with the latest available sequenced blocks.
+            sequencerClient.catchUpToLatest();
+            GetBlockchainStateResponse response = GetBlockchainStateResponse.newBuilder()
+                    .addAllTransactions(nodeState.getAllTransactions())
+                    .build();
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
+        } catch (io.grpc.StatusRuntimeException e) {
+            responseObserver.onError(e);
+        } catch (Exception e) {
+            responseObserver.onError(Status.INTERNAL.withDescription(describe(e)).asRuntimeException());
+        }
     }
 }

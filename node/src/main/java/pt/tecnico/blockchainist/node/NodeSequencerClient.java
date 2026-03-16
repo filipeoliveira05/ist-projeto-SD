@@ -33,22 +33,25 @@ public class NodeSequencerClient implements Runnable {
         return drainAvailableBlocks(0);
     }
 
-    public void setNextBlockNumber(int nextBlockNumber) {
+    public synchronized void setNextBlockNumber(int nextBlockNumber) {
         if (nextBlockNumber < 0) {
             throw new IllegalArgumentException("nextBlockNumber cannot be negative");
         }
         this.nextBlockNumber = nextBlockNumber;
     }
 
+    public synchronized int catchUpToLatest() {
+        catchUpFromCurrentPosition();
+        return nextBlockNumber;
+    }
+
     @Override
     public void run() {
         while (true) {
             try {
-                int drainedUntilBlock = drainAvailableBlocks(nextBlockNumber);
-                if (drainedUntilBlock == nextBlockNumber) {
+                boolean advanced = catchUpFromCurrentPosition();
+                if (!advanced) {
                     Thread.sleep(100); // Polling interval
-                } else {
-                    nextBlockNumber = drainedUntilBlock;
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -63,6 +66,12 @@ public class NodeSequencerClient implements Runnable {
                 }
             }
         }
+    }
+
+    private synchronized boolean catchUpFromCurrentPosition() {
+        int previousBlockNumber = nextBlockNumber;
+        nextBlockNumber = drainAvailableBlocks(previousBlockNumber);
+        return nextBlockNumber != previousBlockNumber;
     }
 
     private int drainAvailableBlocks(int startBlockNumber) {

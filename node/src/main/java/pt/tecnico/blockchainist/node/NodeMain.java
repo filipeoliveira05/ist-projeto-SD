@@ -41,8 +41,13 @@ public class NodeMain {
         Map<String, CompletableFuture<Throwable>> pendingTransactions = new ConcurrentHashMap<>();
         Map<String, RequestResult> completedTransactions = new ConcurrentHashMap<>();
 
-        final NodeServiceImpl nodeService = new NodeServiceImpl(nodeState, sequencerStub, pendingTransactions, completedTransactions);
         NodeSequencerClient sequencerClient = new NodeSequencerClient(sequencerStub, nodeState, pendingTransactions, completedTransactions);
+        final NodeServiceImpl nodeService = new NodeServiceImpl(
+                nodeState,
+                sequencerStub,
+                sequencerClient,
+                pendingTransactions,
+                completedTransactions);
         int nextBlockNumber = sequencerClient.syncInitialBlocks();
         sequencerClient.setNextBlockNumber(nextBlockNumber);
         System.out.println("Initial synchronization complete. Next block number: " + nextBlockNumber);
