@@ -52,18 +52,20 @@ public class ClientNodeService {
         return this.asyncStub.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(metadata));
     }
 
-    public CreateWalletResponse createWallet(String userId, String walletId, int delaySeconds) {
+    public CreateWalletResponse createWallet(String userId, String walletId, String requestId, int delaySeconds) {
         CreateWalletRequest request = CreateWalletRequest.newBuilder()
                 .setUserId(userId)
                 .setWalletId(walletId)
+                .setRequestId(requestId)
                 .build();
         return getStubWithDelay(delaySeconds).createWallet(request);
     }
 
-    public void createWalletAsync(String userId, String walletId, int delaySeconds, long commandNumber) {
+    public void createWalletAsync(String userId, String walletId, String requestId, int delaySeconds, long commandNumber) {
         CreateWalletRequest request = CreateWalletRequest.newBuilder()
                 .setUserId(userId)
                 .setWalletId(walletId)
+                .setRequestId(requestId)
                 .build();
         getAsyncStubWithDelay(delaySeconds).createWallet(request, new StreamObserver<CreateWalletResponse>() {
             @Override
@@ -86,18 +88,20 @@ public class ClientNodeService {
         });
     }
 
-    public DeleteWalletResponse deleteWallet(String userId, String walletId, int delaySeconds) {
+    public DeleteWalletResponse deleteWallet(String userId, String walletId, String requestId, int delaySeconds) {
         DeleteWalletRequest request = DeleteWalletRequest.newBuilder()
                 .setUserId(userId)
                 .setWalletId(walletId)
+                .setRequestId(requestId)
                 .build();
         return getStubWithDelay(delaySeconds).deleteWallet(request);
     }
 
-    public void deleteWalletAsync(String userId, String walletId, int delaySeconds, long commandNumber) {
+    public void deleteWalletAsync(String userId, String walletId, String requestId, int delaySeconds, long commandNumber) {
         DeleteWalletRequest request = DeleteWalletRequest.newBuilder()
                 .setUserId(userId)
                 .setWalletId(walletId)
+                .setRequestId(requestId)
                 .build();
         getAsyncStubWithDelay(delaySeconds).deleteWallet(request, new StreamObserver<DeleteWalletResponse>() {
             @Override
@@ -153,22 +157,24 @@ public class ClientNodeService {
         });
     }
 
-    public TransferResponse transfer(String srcUserId, String srcWalletId, String dstWalletId, long amount, int delaySeconds) {
+    public TransferResponse transfer(String srcUserId, String srcWalletId, String dstWalletId, long amount, String requestId, int delaySeconds) {
         TransferRequest request = TransferRequest.newBuilder()
                 .setSrcUserId(srcUserId)
                 .setSrcWalletId(srcWalletId)
                 .setDstWalletId(dstWalletId)
                 .setValue(amount)
+                .setRequestId(requestId)
                 .build();
         return getStubWithDelay(delaySeconds).transfer(request);
     }
 
-    public void transferAsync(String srcUserId, String srcWalletId, String dstWalletId, long amount, int delaySeconds, long commandNumber) {
+    public void transferAsync(String srcUserId, String srcWalletId, String dstWalletId, long amount, String requestId, int delaySeconds, long commandNumber) {
         TransferRequest request = TransferRequest.newBuilder()
                 .setSrcUserId(srcUserId)
                 .setSrcWalletId(srcWalletId)
                 .setDstWalletId(dstWalletId)
                 .setValue(amount)
+                .setRequestId(requestId)
                 .build();
         getAsyncStubWithDelay(delaySeconds).transfer(request, new StreamObserver<TransferResponse>() {
             @Override

@@ -2,6 +2,7 @@ package pt.tecnico.blockchainist.client;
 
 import java.util.ArrayList;
 import java.util.Scanner;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
@@ -30,6 +31,10 @@ public class CommandProcessor {
 
     public CommandProcessor(ArrayList<ClientNodeService> nodes) {
         this.nodes = nodes;
+    }
+
+    private static String newRequestId() {
+        return UUID.randomUUID().toString();
     }
 
     void userInputLoop() {
@@ -118,10 +123,11 @@ public class CommandProcessor {
         String walletId = split[2];
         Integer nodeIndex = Integer.parseInt(split[3]);
         Integer nodeDelay = Integer.parseInt(split[4]);
+        String requestId = newRequestId();
 
         if (isBlocking) {
             try {
-                var response = nodes.get(nodeIndex).createWallet(userId, walletId, nodeDelay);
+                var response = nodes.get(nodeIndex).createWallet(userId, walletId, requestId, nodeDelay);
                 synchronized (System.out) {
                     System.out.println("OK " + commandNumber);
                     System.out.println(response);
@@ -133,7 +139,7 @@ public class CommandProcessor {
                 }
             }
         } else {
-            nodes.get(nodeIndex).createWalletAsync(userId, walletId, nodeDelay, commandNumber);
+            nodes.get(nodeIndex).createWalletAsync(userId, walletId, requestId, nodeDelay, commandNumber);
         }
     }
 
@@ -146,10 +152,11 @@ public class CommandProcessor {
         String walletId = split[2];
         Integer nodeIndex = Integer.parseInt(split[3]);
         Integer nodeDelay = Integer.parseInt(split[4]);
+        String requestId = newRequestId();
 
         if (isBlocking) {
             try {
-                var response = nodes.get(nodeIndex).deleteWallet(userId, walletId, nodeDelay);
+                var response = nodes.get(nodeIndex).deleteWallet(userId, walletId, requestId, nodeDelay);
                 synchronized (System.out) {
                     System.out.println("OK " + commandNumber);
                     System.out.println(response);
@@ -161,7 +168,7 @@ public class CommandProcessor {
                 }
             }
         } else {
-            nodes.get(nodeIndex).deleteWalletAsync(userId, walletId, nodeDelay, commandNumber);
+            nodes.get(nodeIndex).deleteWalletAsync(userId, walletId, requestId, nodeDelay, commandNumber);
         }
     }
 
@@ -204,10 +211,11 @@ public class CommandProcessor {
         Long amount = Long.parseLong(split[4]);
         Integer nodeIndex = Integer.parseInt(split[5]);
         Integer nodeDelay = Integer.parseInt(split[6]);
+        String requestId = newRequestId();
 
         if (isBlocking) {
             try {
-                var response = nodes.get(nodeIndex).transfer(sourceUserId, sourceWalletId, destinationWalletId, amount, nodeDelay);
+                var response = nodes.get(nodeIndex).transfer(sourceUserId, sourceWalletId, destinationWalletId, amount, requestId, nodeDelay);
                 synchronized (System.out) {
                     System.out.println("OK " + commandNumber);
                     System.out.println(response);
@@ -219,7 +227,7 @@ public class CommandProcessor {
                 }
             }
         } else {
-            nodes.get(nodeIndex).transferAsync(sourceUserId, sourceWalletId, destinationWalletId, amount, nodeDelay, commandNumber);
+            nodes.get(nodeIndex).transferAsync(sourceUserId, sourceWalletId, destinationWalletId, amount, requestId, nodeDelay, commandNumber);
         }
     }
 
