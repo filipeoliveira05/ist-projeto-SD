@@ -136,81 +136,92 @@ public class CommandProcessor {
         });
     }
 
-    void userInputLoop() {
+    private void shutdownNodes() {
+        for (ClientNodeService node : nodes) {
+            try {
+                node.shutdown();
+            } catch (Exception ignored) {
+                // Best-effort shutdown to avoid lingering gRPC threads on client exit.
+            }
+        }
+    }
 
-        Scanner scanner = new Scanner(System.in);
+    void userInputLoop() {
         boolean exit = false;
 
         // PERGUNTAR AO PROFESSOR: \n depois de "ClientMain"
         System.out.println();
 
-        while (!exit) {
-            System.out.print("> ");
-            String line = scanner.nextLine().trim();
+        try (Scanner scanner = new Scanner(System.in)) {
+            while (!exit) {
+                System.out.print("> ");
+                String line = scanner.nextLine().trim();
 
-            // PERGUNTAR AO PROFESSOR: linhas vazias para evitar prompts colados (> > OK 3)
-            if (line.isEmpty()) {
-                System.out.println();
-                continue;
-            }
-
-            String[] split = line.split(SPACE);
-            try {
-                switch (split[0]) {
-                    case CREATE_BLOCKING:
-                        this.create(split, true);
-                        break;
-
-                    case CREATE_ASYNC:
-                        this.create(split, false);
-                        break;
-
-                    case DELETE_BLOCKING:
-                        this.delete(split, true);
-                        break;
-
-                    case DELETE_ASYNC:
-                        this.delete(split, false);
-                        break;
-
-                    case BALANCE_BLOCKING:
-                        this.balance(split, true);
-                        break;
-
-                    case BALANCE_ASYNC:
-                        this.balance(split, false);
-                        break;
-
-                    case TRANSFER_BLOCKING:
-                        this.transfer(split, true);
-                        break;
-
-                    case TRANSFER_ASYNC:
-                        this.transfer(split, false);
-                        break;
-
-                    case DEBUG_BLOCKCHAIN_STATE:
-                        this.debugBlockchainState(split);
-                        break;
-
-                    case PAUSE:
-                        this.pause(split);
-                        break;
-
-                    case EXIT:
-                        exit = true;
-                        break;
-
-                    default:
-                        printUsage();
-                        break;
+                // PERGUNTAR AO PROFESSOR: linhas vazias para evitar prompts colados (> > OK 3)
+                if (line.isEmpty()) {
+                    System.out.println();
+                    continue;
                 }
-            } catch (IllegalArgumentException e) {
-                System.err.println("Error: " + e.getMessage());
-                printUsage();
+
+                String[] split = line.split(SPACE);
+                try {
+                    switch (split[0]) {
+                        case CREATE_BLOCKING:
+                            this.create(split, true);
+                            break;
+
+                        case CREATE_ASYNC:
+                            this.create(split, false);
+                            break;
+
+                        case DELETE_BLOCKING:
+                            this.delete(split, true);
+                            break;
+
+                        case DELETE_ASYNC:
+                            this.delete(split, false);
+                            break;
+
+                        case BALANCE_BLOCKING:
+                            this.balance(split, true);
+                            break;
+
+                        case BALANCE_ASYNC:
+                            this.balance(split, false);
+                            break;
+
+                        case TRANSFER_BLOCKING:
+                            this.transfer(split, true);
+                            break;
+
+                        case TRANSFER_ASYNC:
+                            this.transfer(split, false);
+                            break;
+
+                        case DEBUG_BLOCKCHAIN_STATE:
+                            this.debugBlockchainState(split);
+                            break;
+
+                        case PAUSE:
+                            this.pause(split);
+                            break;
+
+                        case EXIT:
+                            exit = true;
+                            break;
+
+                        default:
+                            printUsage();
+                            break;
+                    }
+                } catch (IllegalArgumentException e) {
+                    System.err.println("Error: " + e.getMessage());
+                    printUsage();
+                }
             }
+        } finally {
+            shutdownNodes();
         }
-        scanner.close();
     }
 
     private void create(String[] split, boolean isBlocking) {

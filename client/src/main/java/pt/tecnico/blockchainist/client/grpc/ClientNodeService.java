@@ -24,6 +24,7 @@ public class ClientNodeService {
             Metadata.Key.of("delay-seconds", Metadata.ASCII_STRING_MARSHALLER);
     private static final int MIN_DEADLINE_SECONDS = 5;
     private static final int DEADLINE_MARGIN_SECONDS = 2;
+    private static final int CHANNEL_SHUTDOWN_TIMEOUT_SECONDS = 3;
 
     private final ManagedChannel channel;
     private final NodeServiceGrpc.NodeServiceBlockingStub stub;
@@ -153,5 +154,18 @@ public class ClientNodeService {
     public GetBlockchainStateResponse getBlockchainState() {
         GetBlockchainStateRequest request = GetBlockchainStateRequest.newBuilder().build();
         return stub.withDeadlineAfter(calculateDeadlineSeconds(0), TimeUnit.SECONDS).getBlockchainState(request);
+    }
+
+    public void shutdown() {
+        channel.shutdown();
+        try {
+            if (!channel.awaitTermination(CHANNEL_SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                channel.shutdownNow();
+                channel.awaitTermination(CHANNEL_SHUTDOWN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            }
+        } catch (InterruptedException e) {
+            channel.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 }
