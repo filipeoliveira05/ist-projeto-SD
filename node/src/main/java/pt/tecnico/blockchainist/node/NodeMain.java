@@ -43,13 +43,16 @@ public class NodeMain {
 
         final NodeServiceImpl nodeService = new NodeServiceImpl(nodeState, sequencerStub, pendingTransactions);
         NodeSequencerClient sequencerClient = new NodeSequencerClient(sequencerStub, nodeState, pendingTransactions);
-        new Thread(sequencerClient).start();
+        int nextBlockNumber = sequencerClient.syncInitialBlocks();
+        sequencerClient.setNextBlockNumber(nextBlockNumber);
+        System.out.println("Initial synchronization complete. Next block number: " + nextBlockNumber);
 
         Server server = ServerBuilder.forPort(port)
                 .addService(ServerInterceptors.intercept(nodeService, new DelayInterceptor()))
                 .build();
 
         server.start();
+        new Thread(sequencerClient, "sequencer-polling-thread").start();
         System.out.println("Server started, listening on " + port);
 
         server.awaitTermination();

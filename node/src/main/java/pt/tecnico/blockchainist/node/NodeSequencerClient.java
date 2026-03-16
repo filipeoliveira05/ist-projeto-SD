@@ -23,24 +23,26 @@ public class NodeSequencerClient implements Runnable {
         this.pendingTransactions = pendingTransactions;
     }
 
+    public int syncInitialBlocks() {
+        return drainAvailableBlocks(0);
+    }
+
+    public void setNextBlockNumber(int nextBlockNumber) {
+        if (nextBlockNumber < 0) {
+            throw new IllegalArgumentException("nextBlockNumber cannot be negative");
+        }
+        this.nextBlockNumber = nextBlockNumber;
+    }
+
     @Override
     public void run() {
         while (true) {
             try {
-                DeliverBlockRequest request = DeliverBlockRequest.newBuilder()
-                        .setBlockNumber(nextBlockNumber)
-                        .build();
-                DeliverBlockResponse response = stub.deliverBlock(request);
-
-                if (response.hasBlock()) {
-                    Block block = response.getBlock();
-                    for (Transaction transaction : block.getTransactionsList()) {
-                        processTransaction(transaction);
-                    }
-                    nodeState.addBlock(block);
-                    nextBlockNumber++;
-                } else {
+                int drainedUntilBlock = drainAvailableBlocks(nextBlockNumber);
+                if (drainedUntilBlock == nextBlockNumber) {
                     Thread.sleep(100); // Polling interval
+                } else {
+                    nextBlockNumber = drainedUntilBlock;
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -55,6 +57,28 @@ public class NodeSequencerClient implements Runnable {
                 }
             }
         }
+    }
+
+    private int drainAvailableBlocks(int startBlockNumber) {
+        int currentBlockNumber = startBlockNumber;
+        while (true) {
+            DeliverBlockRequest request = DeliverBlockRequest.newBuilder()
+                    .setBlockNumber(currentBlockNumber)
+                    .build();
+            DeliverBlockResponse response = stub.deliverBlock(request);
+            if (!response.hasBlock()) {
+                return currentBlockNumber;
+            }
+            processBlock(response.getBlock());
+            currentBlockNumber++;
+        }
+    }
+
+    private void processBlock(Block block) {
+        for (Transaction transaction : block.getTransactionsList()) {
+            processTransaction(transaction);
+        }
+        nodeState.addBlock(block);
     }
 
     private void processTransaction(Transaction transaction) {
