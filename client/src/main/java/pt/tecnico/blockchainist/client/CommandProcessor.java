@@ -6,6 +6,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
+import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import pt.tecnico.blockchainist.client.grpc.ClientNodeService;
 
@@ -35,6 +36,32 @@ public class CommandProcessor {
 
     private static String newRequestId() {
         return UUID.randomUUID().toString();
+    }
+
+    @FunctionalInterface
+    private interface RetryableNodeCall<T> {
+        T execute(ClientNodeService node) throws StatusRuntimeException;
+    }
+
+    private boolean isRetryableStatus(StatusRuntimeException e) {
+        Status.Code code = e.getStatus().getCode();
+        return code == Status.Code.UNAVAILABLE || code == Status.Code.DEADLINE_EXCEEDED;
+    }
+
+    private <T> T invokeWithRoundRobinRetry(int initialNodeIndex, RetryableNodeCall<T> call) throws StatusRuntimeException {
+        int totalNodes = nodes.size();
+        for (int attempt = 0; attempt < totalNodes; attempt++) {
+            int currentNodeIndex = (initialNodeIndex + attempt) % totalNodes;
+            try {
+                return call.execute(nodes.get(currentNodeIndex));
+            } catch (StatusRuntimeException e) {
+                boolean lastAttempt = attempt == totalNodes - 1;
+                if (!isRetryableStatus(e) || lastAttempt) {
+                    throw e;
+                }
+            }
+        }
+        throw new StatusRuntimeException(Status.UNAVAILABLE.withDescription("All nodes unavailable"));
     }
 
     void userInputLoop() {
@@ -127,7 +154,9 @@ public class CommandProcessor {
 
         if (isBlocking) {
             try {
-                var response = nodes.get(nodeIndex).createWallet(userId, walletId, requestId, nodeDelay);
+                var response = invokeWithRoundRobinRetry(
+                        nodeIndex,
+                        node -> node.createWallet(userId, walletId, requestId, nodeDelay));
                 synchronized (System.out) {
                     System.out.println("OK " + commandNumber);
                     System.out.println(response);
@@ -156,7 +185,9 @@ public class CommandProcessor {
 
         if (isBlocking) {
             try {
-                var response = nodes.get(nodeIndex).deleteWallet(userId, walletId, requestId, nodeDelay);
+                var response = invokeWithRoundRobinRetry(
+                        nodeIndex,
+                        node -> node.deleteWallet(userId, walletId, requestId, nodeDelay));
                 synchronized (System.out) {
                     System.out.println("OK " + commandNumber);
                     System.out.println(response);
@@ -183,7 +214,9 @@ public class CommandProcessor {
 
         if (isBlocking) {
             try {
-                var response = nodes.get(nodeIndex).readBalance(walletId, nodeDelay);
+                var response = invokeWithRoundRobinRetry(
+                        nodeIndex,
+                        node -> node.readBalance(walletId, nodeDelay));
                 synchronized (System.out) {
                     System.out.println("OK " + commandNumber);
                     System.out.println(response.getBalance());
@@ -215,7 +248,9 @@ public class CommandProcessor {
 
         if (isBlocking) {
             try {
-                var response = nodes.get(nodeIndex).transfer(sourceUserId, sourceWalletId, destinationWalletId, amount, requestId, nodeDelay);
+                var response = invokeWithRoundRobinRetry(
+                        nodeIndex,
+                        node -> node.transfer(sourceUserId, sourceWalletId, destinationWalletId, amount, requestId, nodeDelay));
                 synchronized (System.out) {
                     System.out.println("OK " + commandNumber);
                     System.out.println(response);
