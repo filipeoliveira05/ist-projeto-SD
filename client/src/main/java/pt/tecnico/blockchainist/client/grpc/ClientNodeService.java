@@ -22,7 +22,7 @@ public class ClientNodeService {
 
     public static final Metadata.Key<String> DELAY_KEY =
             Metadata.Key.of("delay-seconds", Metadata.ASCII_STRING_MARSHALLER);
-    private static final int MIN_DEADLINE_SECONDS = 5;
+    private static final int MIN_DEADLINE_SECONDS = 10;
     private static final int DEADLINE_MARGIN_SECONDS = 2;
     private static final int CHANNEL_SHUTDOWN_TIMEOUT_SECONDS = 3;
 
