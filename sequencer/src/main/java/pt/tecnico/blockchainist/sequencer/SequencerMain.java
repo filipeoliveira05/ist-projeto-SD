@@ -39,6 +39,12 @@ public class SequencerMain {
 
         Server server = ServerBuilder.forPort(port).addService(sequencerService).build();
 
+        // Graceful shutdown: stop accepting new RPCs and finish in-flight ones on SIGINT/SIGTERM.
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("Shutting down sequencer server...");
+            server.shutdown();
+        }));
+
         server.start();
         System.out.println("Server started, listening on " + port);
 

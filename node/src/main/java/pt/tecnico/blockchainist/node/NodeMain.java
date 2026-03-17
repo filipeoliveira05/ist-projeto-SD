@@ -65,6 +65,14 @@ public class NodeMain {
                 .addService(ServerInterceptors.intercept(nodeService, new DelayInterceptor()))
                 .build();
 
+        // Graceful shutdown: stop accepting new RPCs, finish in-flight ones,
+        // and close the channel to the sequencer on SIGINT/SIGTERM.
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("Shutting down node server...");
+            server.shutdown();
+            sequencerChannel.shutdown();
+        }));
+
         server.start();
 
         // Start the background thread that polls the sequencer for new blocks.
