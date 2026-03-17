@@ -23,12 +23,23 @@ import pt.tecnico.blockchainist.contract.TransferRequest;
 import pt.tecnico.blockchainist.contract.TransferResponse;
 import pt.tecnico.blockchainist.node.domain.NodeState;
 
+/**
+ * gRPC service implementation for the blockchain node.
+ * Handles client requests by broadcasting transactions to the sequencer
+ * and waiting for them to be delivered in a block before responding.
+ * Supports idempotent retries via requestId-based deduplication (B.2).
+ */
 public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
     private final NodeState nodeState;
     private final SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub;
     private final NodeSequencerClient sequencerClient;
+
+    // Pending futures for transactions that have been sent to the sequencer
+    // but not yet delivered in a block.
     private final Map<String, CompletableFuture<Throwable>> pendingTransactions;
+
+    // Cache of already-processed transaction results, used for idempotent retries.
     private final Map<String, RequestResult> completedTransactions;
 
     public NodeServiceImpl(
@@ -44,10 +55,12 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
         this.completedTransactions = completedTransactions;
     }
 
+    /** Assign a UUID if the client did not provide a requestId. */
     private static String ensureRequestId(String requestId) {
         return (requestId == null || requestId.isBlank()) ? UUID.randomUUID().toString() : requestId;
     }
 
+    /** Rebuild the request with a valid requestId if one was missing. */
     private static CreateWalletRequest normalizeCreateWalletRequest(CreateWalletRequest request) {
         String requestId = ensureRequestId(request.getRequestId());
         if (requestId.equals(request.getRequestId())) {
@@ -77,12 +90,26 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
         return message == null ? error.toString() : message;
     }
 
+    /**
+     * Submit a transaction to the sequencer and block until it is delivered
+     * in a block and executed locally. Returns null on success, or the
+     * error thrown during execution.
+     *
+     * Uses a CompletableFuture per requestId so that:
+     * - The polling thread (NodeSequencerClient) completes the future when
+     *   the transaction is processed from a block.
+     * - Duplicate requests (B.2 retries) reuse the same future or return
+     *   the cached result from completedTransactions.
+     */
     private Throwable submitAndAwaitResult(String requestId, Transaction transaction) throws Throwable {
+        // Check if this transaction was already processed (idempotent retry).
         RequestResult completedResult = completedTransactions.get(requestId);
         if (completedResult != null) {
             return completedResult.getError();
         }
 
+        // Atomically register a future; if another thread already registered one,
+        // we join its future instead of broadcasting a duplicate.
         CompletableFuture<Throwable> candidateFuture = new CompletableFuture<>();
         CompletableFuture<Throwable> future = pendingTransactions.putIfAbsent(requestId, candidateFuture);
 
@@ -111,6 +138,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
         }
     }
 
+    /** Map domain errors to appropriate gRPC status codes for createWallet. */
     private void respondWithCreateWalletError(Throwable error, StreamObserver<CreateWalletResponse> responseObserver) {
         String description = describe(error);
         if (error instanceof IllegalArgumentException) {
@@ -124,6 +152,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
         responseObserver.onError(Status.INTERNAL.withDescription(description).asRuntimeException());
     }
 
+    /** Map domain errors to appropriate gRPC status codes for deleteWallet. */
     private void respondWithDeleteWalletError(Throwable error, StreamObserver<DeleteWalletResponse> responseObserver) {
         String description = describe(error);
         if (error instanceof IllegalArgumentException) {
@@ -137,6 +166,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
         responseObserver.onError(Status.INTERNAL.withDescription(description).asRuntimeException());
     }
 
+    /** Map domain errors to appropriate gRPC status codes for transfer. */
     private void respondWithTransferError(Throwable error, StreamObserver<TransferResponse> responseObserver) {
         String description = describe(error);
         if (error instanceof IllegalArgumentException) {
@@ -150,6 +180,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
         responseObserver.onError(Status.INTERNAL.withDescription(description).asRuntimeException());
     }
 
+    /** Sleep for the delay (in seconds) specified in the gRPC metadata header. */
     private void applyDelay() {
         Integer delay = DelayInterceptor.DELAY_CTX_KEY.get();
         if (delay != null && delay > 0) {

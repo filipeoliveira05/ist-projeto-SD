@@ -4,6 +4,10 @@ import java.util.ArrayList;
 
 import pt.tecnico.blockchainist.client.grpc.ClientNodeService;
 
+/**
+ * Client entry point. Parses node addresses from command-line arguments
+ * (format: host:port:organization) and starts the interactive command loop.
+ */
 public class ClientMain {
 
     public static void main(String[] args) {

@@ -16,9 +16,16 @@ import pt.tecnico.blockchainist.contract.DeleteWalletResponse;
 import pt.tecnico.blockchainist.contract.ReadBalanceResponse;
 import pt.tecnico.blockchainist.contract.TransferResponse;
 
+/**
+ * Reads user commands from stdin and dispatches them to blockchain nodes.
+ * Supports both blocking (C/E/S/T) and async (c/e/t/s) command variants.
+ * Implements round-robin retry across known nodes on suspected failures (B.2).
+ */
 public class CommandProcessor {
 
     private static final String SPACE = " ";
+
+    // Blocking command identifiers
     private static final String CREATE_BLOCKING = "C";
     private static final String CREATE_ASYNC = "c";
     private static final String DELETE_BLOCKING = "E";
@@ -31,8 +38,10 @@ public class CommandProcessor {
     private static final String PAUSE = "P";
     private static final String EXIT = "X";
 
+    // IDs must be ASCII alphanumeric only
     private static final Pattern ID_PATTERN = Pattern.compile("^[a-zA-Z0-9]+$");
 
+    // Sequential command counter shared across blocking and async commands
     private final AtomicLong commandCounter = new AtomicLong(0);
     private final ArrayList<ClientNodeService> nodes;
 
@@ -40,20 +49,24 @@ public class CommandProcessor {
         this.nodes = nodes;
     }
 
+    /** Generate a unique request ID for idempotent transaction retries (B.2). */
     private static String newRequestId() {
         return UUID.randomUUID().toString();
     }
 
+    /** Functional interface for a blocking RPC call that can be retried on another node. */
     @FunctionalInterface
     private interface RetryableNodeCall<T> {
         T execute(ClientNodeService node) throws StatusRuntimeException;
     }
 
+    /** Functional interface for an async RPC call that can be retried on another node. */
     @FunctionalInterface
     private interface RetryableAsyncNodeCall<T> {
         void execute(ClientNodeService node, StreamObserver<T> observer);
     }
 
+    /** UNAVAILABLE or DEADLINE_EXCEEDED indicate the node may have crashed (B.2). */
     private boolean isSuspectedNodeFailure(StatusRuntimeException e) {
         Status.Code code = e.getStatus().getCode();
         return code == Status.Code.UNAVAILABLE || code == Status.Code.DEADLINE_EXCEEDED;
@@ -80,6 +93,11 @@ public class CommandProcessor {
         }
     }
 
+    /**
+     * Blocking round-robin retry: try the initial node, then cycle through
+     * remaining nodes on suspected failures. Application-level errors (e.g.
+     * ALREADY_EXISTS) are thrown immediately without retry.
+     */
     private <T> T invokeWithRoundRobinRetry(int initialNodeIndex, RetryableNodeCall<T> call) throws StatusRuntimeException {
         int totalNodes = nodes.size();
         for (int attempt = 0; attempt < totalNodes; attempt++) {
@@ -96,6 +114,10 @@ public class CommandProcessor {
         throw new StatusRuntimeException(Status.UNAVAILABLE.withDescription("All nodes unavailable"));
     }
 
+    /**
+     * Async round-robin retry: on suspected node failure, the StreamObserver's
+     * onError callback re-issues the call to the next node in the list.
+     */
     private <T> void invokeAsyncWithRoundRobinRetry(
             int initialNodeIndex,
             long commandNumber,
@@ -104,6 +126,7 @@ public class CommandProcessor {
         invokeAsyncWithRoundRobinRetry(initialNodeIndex, 0, commandNumber, call, onSuccess);
     }
 
+    /** Recursive helper for async retry; each attempt increments the node index. */
     private <T> void invokeAsyncWithRoundRobinRetry(
             int initialNodeIndex,
             int attempt,
@@ -149,7 +172,6 @@ public class CommandProcessor {
     void userInputLoop() {
         boolean exit = false;
 
-        // PERGUNTAR AO PROFESSOR: \n depois de "ClientMain"
         System.out.println();
 
         try (Scanner scanner = new Scanner(System.in)) {
@@ -157,7 +179,6 @@ public class CommandProcessor {
                 System.out.print("> ");
                 String line = scanner.nextLine().trim();
 
-                // PERGUNTAR AO PROFESSOR: linhas vazias para evitar prompts colados (> > OK 3)
                 if (line.isEmpty()) {
                     System.out.println();
                     continue;

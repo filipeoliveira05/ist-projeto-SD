@@ -7,11 +7,19 @@ import io.grpc.ServerCall;
 import io.grpc.ServerCallHandler;
 import io.grpc.ServerInterceptor;
 
+/**
+ * Server interceptor that extracts the "delay-seconds" metadata header
+ * from incoming gRPC requests and stores it in the gRPC Context.
+ * The delay is later applied by NodeServiceImpl.applyDelay() before
+ * processing the request (B.1 requirement).
+ */
 public class DelayInterceptor implements ServerInterceptor {
 
+    // Metadata key matching the one sent by the client.
     public static final Metadata.Key<String> DELAY_KEY =
             Metadata.Key.of("delay-seconds", Metadata.ASCII_STRING_MARSHALLER);
 
+    // Context key used to pass the parsed delay value to the RPC handler.
     public static final Context.Key<Integer> DELAY_CTX_KEY = Context.key("delay-seconds");
 
     @Override

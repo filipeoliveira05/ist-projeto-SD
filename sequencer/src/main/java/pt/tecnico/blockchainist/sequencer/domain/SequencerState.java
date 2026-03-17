@@ -12,15 +12,29 @@ import java.util.concurrent.TimeUnit;
 import pt.tecnico.blockchainist.contract.Block;
 import pt.tecnico.blockchainist.contract.Transaction;
 
+/**
+ * Manages the sequencer's transaction ordering and block creation.
+ * Transactions are grouped into blocks and closed when either:
+ * - The maximum number of transactions per block (N) is reached, or
+ * - A timeout (T seconds) expires since the first transaction in the block.
+ * Supports requestId-based deduplication for idempotent retries (B.2).
+ */
 public class SequencerState {
 
     private final List<Block> completedBlocks = new ArrayList<>();
     private List<Transaction> currentBlockTransactions = new ArrayList<>();
-    private final List<Transaction> allTransactions = new ArrayList<>(); // kept for retrocompatibility
+
+    // flat list for A.2 compatibility
+    private final List<Transaction> allTransactions = new ArrayList<>();
+
+    // requestId -> seqNumber (dedup)
     private final Map<String, Integer> requestSequenceNumbers = new HashMap<>();
     
+    // N
     private final int maxTransactionsPerBlock;
-    private final long blockTimeoutMs;
+    
+    // T (in milliseconds)
+    private final long blockTimeoutMs;           
     
     private final ScheduledExecutorService scheduler;
     private ScheduledFuture<?> currentTimer;
@@ -31,7 +45,13 @@ public class SequencerState {
         this.scheduler = Executors.newScheduledThreadPool(1);
     }
 
+    /**
+     * Add a transaction to the current block. If this is a duplicate requestId,
+     * return the existing sequence number without re-adding the transaction.
+     * Starts the block timeout timer on the first transaction of a new block.
+     */
     public synchronized int addTransaction(Transaction transaction) {
+        // Deduplication: return existing sequence number for retried requests.
         String requestId = getRequestId(transaction);
         if (requestId != null && !requestId.isBlank()) {
             Integer existingSequenceNumber = requestSequenceNumbers.get(requestId);
@@ -46,6 +66,7 @@ public class SequencerState {
             requestSequenceNumbers.put(requestId, seqNumber);
         }
         
+        // Start the block timeout timer when the first transaction arrives.
         boolean wasEmpty = currentBlockTransactions.isEmpty();
         currentBlockTransactions.add(transaction);
         
@@ -57,6 +78,7 @@ public class SequencerState {
             );
         }
         
+        // Close the block immediately if it reached the maximum size (N).
         if (currentBlockTransactions.size() == maxTransactionsPerBlock) {
             closeCurrentBlock();
         }
@@ -73,6 +95,10 @@ public class SequencerState {
         };
     }
 
+    /**
+     * Finalize the current block: assign it a sequential block number,
+     * add it to the completed list, and cancel any pending timeout timer.
+     */
     public synchronized void closeCurrentBlock() {
         if (currentBlockTransactions.isEmpty()) {
             return;
@@ -93,6 +119,7 @@ public class SequencerState {
         notifyAll();
     }
     
+    /** Return the block with the given number, or null if not yet available. */
     public synchronized Block getBlock(int blockNumber) {
         if (blockNumber >= 0 && blockNumber < completedBlocks.size()) {
             return completedBlocks.get(blockNumber);
@@ -100,6 +127,7 @@ public class SequencerState {
         return null;
     }
 
+    /** Return the transaction at the given sequence number, or null if not yet available (A.2). */
     public synchronized Transaction getNextTransaction(int lastSeenSeqNumber) {
         // If the node has seen 'lastSeenSeqNumber' transactions, 
         // the next one is at index 'lastSeenSeqNumber' (since IDs are 1-based and indices 0-based).

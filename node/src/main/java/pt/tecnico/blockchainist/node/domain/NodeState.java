@@ -8,14 +8,20 @@ import java.util.Map;
 import pt.tecnico.blockchainist.contract.Block;
 import pt.tecnico.blockchainist.contract.Transaction;
 
+/**
+ * Local blockchain state maintained by each node.
+ * Holds the set of wallets, their balances, and the ordered chain of blocks.
+ * All mutating methods are synchronized to ensure thread safety between
+ * the gRPC handler threads and the block-polling thread.
+ */
 public class NodeState {
-    
-    // - The set of wallets, indexed by their identifiers, and their owner user identifiers (including the 'bc' wallet)
+    // Wallet ID -> owner user ID (includes the pre-existing 'bc' wallet)
     private final Map<String, String> walletOwners = new HashMap<>();
-    // - The balance of each wallet
+    
+    // Wallet ID -> current balance
     private final Map<String, Long> balances = new HashMap<>();
     
-    // - The transaction ledger (up to A.2, a chain of individual transactions; after B.1, a chain of blocks)
+    // Ordered chain of blocks (B.1)
     private final List<Block> blockchain = new ArrayList<>();
 
     public NodeState() {
@@ -85,6 +91,7 @@ public class NodeState {
         return new ArrayList<>(blockchain);
     }
 
+    /** Flatten all blocks into a single ordered list of transactions (for debug command B). */
     public synchronized List<Transaction> getAllTransactions() {
         List<Transaction> allTransactions = new ArrayList<>();
         for (Block block : blockchain) {

@@ -10,12 +10,24 @@ import pt.tecnico.blockchainist.contract.SequencerServiceGrpc;
 import pt.tecnico.blockchainist.contract.Transaction;
 import pt.tecnico.blockchainist.node.domain.NodeState;
 
+/**
+ * Polls the sequencer for new blocks and processes them locally.
+ * Runs as a background thread after initial synchronization.
+ * When a transaction is processed, it completes the corresponding
+ * CompletableFuture so that the waiting gRPC handler can respond to the client.
+ */
 public class NodeSequencerClient implements Runnable {
 
     private final SequencerServiceGrpc.SequencerServiceBlockingStub stub;
     private final NodeState nodeState;
+
+    // Shared with NodeServiceImpl: futures awaiting block delivery.
     private final Map<String, CompletableFuture<Throwable>> pendingTransactions;
+    
+    // Shared with NodeServiceImpl: cached results for idempotent retries.
     private final Map<String, RequestResult> completedTransactions;
+
+    // The next block number this node expects from the sequencer.
     private int nextBlockNumber = 0;
 
     public NodeSequencerClient(
@@ -29,6 +41,7 @@ public class NodeSequencerClient implements Runnable {
         this.completedTransactions = completedTransactions;
     }
 
+    /** Fetch all existing blocks from the sequencer (used at startup for B.2 sync). */
     public int syncInitialBlocks() {
         return drainAvailableBlocks(0);
     }
@@ -40,11 +53,13 @@ public class NodeSequencerClient implements Runnable {
         this.nextBlockNumber = nextBlockNumber;
     }
 
+    /** Process all available blocks up to the latest; used by readBalance/getBlockchainState. */
     public synchronized int catchUpToLatest() {
         catchUpFromCurrentPosition();
         return nextBlockNumber;
     }
 
+    /** Background polling loop: continuously fetches new blocks from the sequencer. */
     @Override
     public void run() {
         while (true) {
@@ -74,6 +89,7 @@ public class NodeSequencerClient implements Runnable {
         return nextBlockNumber != previousBlockNumber;
     }
 
+    /** Request blocks sequentially until the sequencer has no more to deliver. */
     private int drainAvailableBlocks(int startBlockNumber) {
         int currentBlockNumber = startBlockNumber;
         while (true) {
@@ -89,6 +105,7 @@ public class NodeSequencerClient implements Runnable {
         }
     }
 
+    /** Execute each transaction in the block and append the block to the local blockchain. */
     private void processBlock(Block block) {
         for (Transaction transaction : block.getTransactionsList()) {
             processTransaction(transaction);
@@ -96,6 +113,10 @@ public class NodeSequencerClient implements Runnable {
         nodeState.addBlock(block);
     }
 
+    /**
+     * Apply a single transaction to the local state and notify any waiting handler.
+     * Stores the result in completedTransactions for idempotent retry support.
+     */
     private void processTransaction(Transaction transaction) {
         Throwable error = null;
         String requestId = getRequestId(transaction);
@@ -120,10 +141,12 @@ public class NodeSequencerClient implements Runnable {
             System.err.println("Error processing transaction: " + e.getMessage());
         }
 
+        // Cache the result so that retried requests can return immediately.
         if (requestId != null && !requestId.isBlank()) {
             completedTransactions.put(requestId, error == null ? RequestResult.success() : RequestResult.failure(error));
         }
 
+        // Complete the pending future to unblock the gRPC handler thread.
         CompletableFuture<Throwable> future = requestId == null || requestId.isBlank()
                 ? null
                 : pendingTransactions.remove(requestId);

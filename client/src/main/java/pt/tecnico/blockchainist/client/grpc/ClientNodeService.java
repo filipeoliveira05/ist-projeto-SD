@@ -18,16 +18,29 @@ import pt.tecnico.blockchainist.contract.ReadBalanceResponse;
 import pt.tecnico.blockchainist.contract.TransferRequest;
 import pt.tecnico.blockchainist.contract.TransferResponse;
 
+/**
+ * gRPC client wrapper for communicating with a single blockchain node.
+ * Provides both blocking and async variants of each RPC, and attaches
+ * the server-side delay as gRPC metadata when requested.
+ */
 public class ClientNodeService {
 
+    // Metadata key used to send the requested delay (in seconds) to the node.
     public static final Metadata.Key<String> DELAY_KEY =
             Metadata.Key.of("delay-seconds", Metadata.ASCII_STRING_MARSHALLER);
+
+    // Must exceed the sequencer block timeout (T=5s) plus polling interval,
+    // otherwise the client deadline fires before the block is delivered.
     private static final int MIN_DEADLINE_SECONDS = 10;
     private static final int DEADLINE_MARGIN_SECONDS = 2;
     private static final int CHANNEL_SHUTDOWN_TIMEOUT_SECONDS = 3;
 
     private final ManagedChannel channel;
+
+    // for blocking (C/E/S/T) commands
     private final NodeServiceGrpc.NodeServiceBlockingStub stub;
+
+    // for async (c/e/s/t) commands
     private final NodeServiceGrpc.NodeServiceStub asyncStub;
 
     public ClientNodeService(String host, int port, String organization) {
@@ -36,10 +49,12 @@ public class ClientNodeService {
         this.asyncStub = NodeServiceGrpc.newStub(channel);
     }
 
+    /** Compute a deadline that accounts for server-side delay plus a safety margin. */
     private long calculateDeadlineSeconds(int delaySeconds) {
         return Math.max(MIN_DEADLINE_SECONDS, (long) delaySeconds + DEADLINE_MARGIN_SECONDS);
     }
 
+    /** Configure blocking stub with delay metadata header and appropriate deadline. */
     private NodeServiceGrpc.NodeServiceBlockingStub getStubWithDelay(int delaySeconds) {
         NodeServiceGrpc.NodeServiceBlockingStub configuredStub = this.stub;
         if (delaySeconds <= 0) {
@@ -51,6 +66,7 @@ public class ClientNodeService {
         return configuredStub.withDeadlineAfter(calculateDeadlineSeconds(delaySeconds), TimeUnit.SECONDS);
     }
 
+    /** Configure async stub with delay metadata header and appropriate deadline. */
     private NodeServiceGrpc.NodeServiceStub getAsyncStubWithDelay(int delaySeconds) {
         NodeServiceGrpc.NodeServiceStub configuredStub = this.asyncStub;
         if (delaySeconds <= 0) {
@@ -156,6 +172,7 @@ public class ClientNodeService {
         return stub.withDeadlineAfter(calculateDeadlineSeconds(0), TimeUnit.SECONDS).getBlockchainState(request);
     }
 
+    /** Gracefully shut down the gRPC channel, forcing termination if needed. */
     public void shutdown() {
         channel.shutdown();
         try {
