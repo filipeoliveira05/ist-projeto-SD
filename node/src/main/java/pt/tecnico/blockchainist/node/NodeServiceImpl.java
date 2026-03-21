@@ -1,6 +1,7 @@
 package pt.tecnico.blockchainist.node;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -27,6 +28,8 @@ import pt.tecnico.blockchainist.node.domain.NodeState;
  * gRPC service implementation for the blockchain node.
  * Handles client requests by broadcasting transactions to the sequencer
  * and waiting for them to be delivered in a block before responding.
+ * Transfers use speculative execution (C.1): applied locally and responded
+ * immediately without waiting for block delivery.
  * Supports idempotent retries via requestId-based deduplication (B.2).
  */
 public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
@@ -42,17 +45,22 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
     // Cache of already-processed transaction results, used for idempotent retries.
     private final Map<String, RequestResult> completedTransactions;
 
+    // C.1: Tracks requestIds of transfers applied speculatively before block delivery.
+    private final Set<String> speculativeTransfers;
+
     public NodeServiceImpl(
             NodeState nodeState,
             SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub,
             NodeSequencerClient sequencerClient,
             Map<String, CompletableFuture<Throwable>> pendingTransactions,
-            Map<String, RequestResult> completedTransactions) {
+            Map<String, RequestResult> completedTransactions,
+            Set<String> speculativeTransfers) {
         this.nodeState = nodeState;
         this.sequencerStub = sequencerStub;
         this.sequencerClient = sequencerClient;
         this.pendingTransactions = pendingTransactions;
         this.completedTransactions = completedTransactions;
+        this.speculativeTransfers = speculativeTransfers;
     }
 
     /** Assign a UUID if the client did not provide a requestId. */
@@ -253,6 +261,12 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
         }
     }
 
+    /**
+     * C.1: Speculative execution - apply the transfer to local state immediately,
+     * respond to the client without waiting for block delivery, and broadcast
+     * to the sequencer asynchronously. The polling thread will skip re-execution
+     * for transfers already applied speculatively.
+     */
     @Override
     public void transfer(TransferRequest request, StreamObserver<TransferResponse> responseObserver) {
         applyDelay();
@@ -260,14 +274,38 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
         String requestId = normalizedRequest.getRequestId();
         Transaction transaction = Transaction.newBuilder().setTransfer(normalizedRequest).build();
 
-        try {
-            Throwable error = submitAndAwaitResult(requestId, transaction);
-            if (error != null) {
-                throw error;
+        // Idempotency: check if transaction was already processed (B.2 retry).
+        RequestResult completedResult = completedTransactions.get(requestId);
+        if (completedResult != null) {
+            if (completedResult.isSuccess()) {
+                responseObserver.onNext(TransferResponse.getDefaultInstance());
+                responseObserver.onCompleted();
+            } else {
+                respondWithTransferError(completedResult.getError(), responseObserver);
             }
+            return;
+        }
+
+        // C.1: Speculative execution - apply to local state immediately.
+        try {
+            nodeState.transfer(
+                    normalizedRequest.getSrcUserId(),
+                    normalizedRequest.getSrcWalletId(),
+                    normalizedRequest.getDstWalletId(),
+                    normalizedRequest.getValue());
+
+            // Mark as speculative and cache the result.
+            speculativeTransfers.add(requestId);
+            completedTransactions.put(requestId, RequestResult.success());
+
+            // Broadcast to sequencer (without waiting for block delivery).
+            sequencerStub.broadcast(
+                    BroadcastRequest.newBuilder().setTransaction(transaction).build());
+
             responseObserver.onNext(TransferResponse.getDefaultInstance());
             responseObserver.onCompleted();
-        } catch (Throwable e) {
+        } catch (Exception e) {
+            completedTransactions.put(requestId, RequestResult.failure(e));
             respondWithTransferError(e, responseObserver);
         }
     }
