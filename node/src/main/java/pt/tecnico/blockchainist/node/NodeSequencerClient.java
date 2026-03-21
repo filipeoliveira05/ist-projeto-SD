@@ -31,6 +31,9 @@ public class NodeSequencerClient implements Runnable {
     // C.1: Tracks requestIds of transfers applied speculatively by NodeServiceImpl.
     private final Set<String> speculativeTransfers;
 
+    // C.1: Lock shared with NodeServiceImpl for causal dependency notification.
+    private Object dependencyLock;
+
     // The next block number this node expects from the sequencer.
     private int nextBlockNumber = 0;
 
@@ -45,6 +48,11 @@ public class NodeSequencerClient implements Runnable {
         this.pendingTransactions = pendingTransactions;
         this.completedTransactions = completedTransactions;
         this.speculativeTransfers = speculativeTransfers;
+    }
+
+    /** C.1: Set the dependency lock shared with NodeServiceImpl for causal notifications. */
+    public void setDependencyLock(Object dependencyLock) {
+        this.dependencyLock = dependencyLock;
     }
 
     /** Fetch all existing blocks from the sequencer (used at startup for B.2 sync). */
@@ -169,6 +177,13 @@ public class NodeSequencerClient implements Runnable {
                 : pendingTransactions.remove(requestId);
         if (future != null) {
             future.complete(error);
+        }
+
+        // C.1: Notify threads waiting on causal dependencies.
+        if (dependencyLock != null) {
+            synchronized (dependencyLock) {
+                dependencyLock.notifyAll();
+            }
         }
     }
 

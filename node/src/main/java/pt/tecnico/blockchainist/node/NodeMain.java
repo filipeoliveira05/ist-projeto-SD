@@ -59,6 +59,10 @@ public class NodeMain {
                 pendingTransactions,
                 completedTransactions,
                 speculativeTransfers);
+
+        // C.1: Share the dependency lock between NodeServiceImpl and NodeSequencerClient
+        // so that both can notify threads waiting for causal dependencies.
+        sequencerClient.setDependencyLock(nodeService.getDependencyLock());
                 
         // B.2: Synchronize with the sequencer before accepting client requests.
         // This ensures the node has the full blockchain even if it joins late.

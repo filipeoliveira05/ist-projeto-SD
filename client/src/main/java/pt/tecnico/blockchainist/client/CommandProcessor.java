@@ -1,7 +1,10 @@
 package pt.tecnico.blockchainist.client;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Scanner;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -41,9 +44,17 @@ public class CommandProcessor {
     // IDs must be ASCII alphanumeric only
     private static final Pattern ID_PATTERN = Pattern.compile("^[a-zA-Z0-9]+$");
 
+    // Maximum number of causal dependencies to track (older ones are pruned).
+    private static final int MAX_CAUSAL_CONTEXT_SIZE = 50;
+
     // Sequential command counter shared across blocking and async commands
     private final AtomicLong commandCounter = new AtomicLong(0);
     private final ArrayList<ClientNodeService> nodes;
+
+    // C.1: Tracks requestIds of completed transactions for causal dependency tracking.
+    // Transfers include this set as causal dependencies so that the node can enforce
+    // causal ordering before speculative execution.
+    private final Set<String> causalContext = new LinkedHashSet<>();
 
     public CommandProcessor(ArrayList<ClientNodeService> nodes) {
         this.nodes = nodes;
@@ -52,6 +63,20 @@ public class CommandProcessor {
     /** Generate a unique request ID for idempotent transaction retries (B.2). */
     private static String newRequestId() {
         return UUID.randomUUID().toString();
+    }
+
+    /** C.1: Add a requestId to the causal context, pruning oldest entries if needed. */
+    private void addToCausalContext(String requestId) {
+        causalContext.add(requestId);
+        while (causalContext.size() > MAX_CAUSAL_CONTEXT_SIZE) {
+            causalContext.iterator().next();
+            causalContext.remove(causalContext.iterator().next());
+        }
+    }
+
+    /** C.1: Snapshot the current causal context for inclusion in a transfer request. */
+    private List<String> snapshotCausalContext() {
+        return new ArrayList<>(causalContext);
     }
 
     /** Functional interface for a blocking RPC call that can be retried on another node. */
@@ -261,6 +286,8 @@ public class CommandProcessor {
                 var response = invokeWithRoundRobinRetry(
                         nodeIndex,
                         node -> node.createWallet(userId, walletId, requestId, nodeDelay));
+                // C.1: Track successful create in causal context.
+                addToCausalContext(requestId);
                 synchronized (System.out) {
                     System.out.println("OK " + commandNumber);
                     System.out.println(response);
@@ -269,6 +296,8 @@ public class CommandProcessor {
                 printCommandError(commandNumber, e);
             }
         } else {
+            // C.1: Add to causal context before sending (async ordering guarantee).
+            addToCausalContext(requestId);
             this.<CreateWalletResponse>invokeAsyncWithRoundRobinRetry(
                     nodeIndex,
                     commandNumber,
@@ -298,6 +327,8 @@ public class CommandProcessor {
                 var response = invokeWithRoundRobinRetry(
                         nodeIndex,
                         node -> node.deleteWallet(userId, walletId, requestId, nodeDelay));
+                // C.1: Track successful delete in causal context.
+                addToCausalContext(requestId);
                 synchronized (System.out) {
                     System.out.println("OK " + commandNumber);
                     System.out.println(response);
@@ -306,6 +337,8 @@ public class CommandProcessor {
                 printCommandError(commandNumber, e);
             }
         } else {
+            // C.1: Add to causal context before sending (async ordering guarantee).
+            addToCausalContext(requestId);
             this.<DeleteWalletResponse>invokeAsyncWithRoundRobinRetry(
                     nodeIndex,
                     commandNumber,
@@ -369,11 +402,16 @@ public class CommandProcessor {
         Integer nodeDelay = Integer.parseInt(split[6]);
         String requestId = newRequestId();
 
+        // C.1: Capture causal dependencies before sending the transfer.
+        List<String> deps = snapshotCausalContext();
+
         if (isBlocking) {
             try {
                 var response = invokeWithRoundRobinRetry(
                         nodeIndex,
-                        node -> node.transfer(sourceUserId, sourceWalletId, destinationWalletId, amount, requestId, nodeDelay));
+                        node -> node.transfer(sourceUserId, sourceWalletId, destinationWalletId, amount, requestId, deps, nodeDelay));
+                // C.1: Track successful transfer in causal context.
+                addToCausalContext(requestId);
                 synchronized (System.out) {
                     System.out.println("OK " + commandNumber);
                     System.out.println(response);
@@ -382,10 +420,12 @@ public class CommandProcessor {
                 printCommandError(commandNumber, e);
             }
         } else {
+            // C.1: Add to causal context before sending (async ordering guarantee).
+            addToCausalContext(requestId);
             this.<TransferResponse>invokeAsyncWithRoundRobinRetry(
                     nodeIndex,
                     commandNumber,
-                    (node, observer) -> node.transferAsync(sourceUserId, sourceWalletId, destinationWalletId, amount, requestId, nodeDelay, observer),
+                    (node, observer) -> node.transferAsync(sourceUserId, sourceWalletId, destinationWalletId, amount, requestId, deps, nodeDelay, observer),
                     (TransferResponse response) -> {
                         synchronized (System.out) {
                             System.out.println("OK " + commandNumber);
