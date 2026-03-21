@@ -2,6 +2,7 @@ package pt.tecnico.blockchainist.node;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -47,13 +48,18 @@ public class NodeMain {
         Map<String, CompletableFuture<Throwable>> pendingTransactions = new ConcurrentHashMap<>();
         Map<String, RequestResult> completedTransactions = new ConcurrentHashMap<>();
 
-        NodeSequencerClient sequencerClient = new NodeSequencerClient(sequencerStub, nodeState, pendingTransactions, completedTransactions);
+        // C.1: Tracks requestIds of transfers applied speculatively (before block delivery).
+        Set<String> speculativeTransfers = ConcurrentHashMap.newKeySet();
+
+        NodeSequencerClient sequencerClient = new NodeSequencerClient(sequencerStub, nodeState, pendingTransactions, completedTransactions, speculativeTransfers);
         final NodeServiceImpl nodeService = new NodeServiceImpl(
                 nodeState,
                 sequencerStub,
                 sequencerClient,
                 pendingTransactions,
-                completedTransactions);
+                completedTransactions,
+                speculativeTransfers);
+                
         // B.2: Synchronize with the sequencer before accepting client requests.
         // This ensures the node has the full blockchain even if it joins late.
         int nextBlockNumber = sequencerClient.syncInitialBlocks();
