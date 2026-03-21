@@ -5,6 +5,7 @@ import io.grpc.ManagedChannelBuilder;
 import io.grpc.Metadata;
 import io.grpc.stub.MetadataUtils;
 import io.grpc.stub.StreamObserver;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import pt.tecnico.blockchainist.contract.CreateWalletRequest;
 import pt.tecnico.blockchainist.contract.CreateWalletResponse;
@@ -138,13 +139,14 @@ public class ClientNodeService {
         getAsyncStubWithDelay(delaySeconds).readBalance(request, responseObserver);
     }
 
-    public TransferResponse transfer(String srcUserId, String srcWalletId, String dstWalletId, long amount, String requestId, int delaySeconds) {
+    public TransferResponse transfer(String srcUserId, String srcWalletId, String dstWalletId, long amount, String requestId, List<String> causalDependencies, int delaySeconds) {
         TransferRequest request = TransferRequest.newBuilder()
                 .setSrcUserId(srcUserId)
                 .setSrcWalletId(srcWalletId)
                 .setDstWalletId(dstWalletId)
                 .setValue(amount)
                 .setRequestId(requestId)
+                .addAllCausalDependencies(causalDependencies)
                 .build();
         return getStubWithDelay(delaySeconds).transfer(request);
     }
@@ -155,6 +157,7 @@ public class ClientNodeService {
             String dstWalletId,
             long amount,
             String requestId,
+            List<String> causalDependencies,
             int delaySeconds,
             StreamObserver<TransferResponse> responseObserver) {
         TransferRequest request = TransferRequest.newBuilder()
@@ -163,6 +166,7 @@ public class ClientNodeService {
                 .setDstWalletId(dstWalletId)
                 .setValue(amount)
                 .setRequestId(requestId)
+                .addAllCausalDependencies(causalDependencies)
                 .build();
         getAsyncStubWithDelay(delaySeconds).transfer(request, responseObserver);
     }
