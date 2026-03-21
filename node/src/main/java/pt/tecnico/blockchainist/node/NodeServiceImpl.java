@@ -1,5 +1,6 @@
 package pt.tecnico.blockchainist.node;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -47,6 +48,9 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
     // C.1: Tracks requestIds of transfers applied speculatively before block delivery.
     private final Set<String> speculativeTransfers;
+
+    // C.1: Lock used to wait for causal dependencies to be satisfied.
+    private final Object dependencyLock = new Object();
 
     public NodeServiceImpl(
             NodeState nodeState,
@@ -286,6 +290,12 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             return;
         }
 
+        // C.1: Wait for causal dependencies before speculative execution.
+        List<String> deps = normalizedRequest.getCausalDependenciesList();
+        if (!deps.isEmpty()) {
+            waitForDependencies(deps, 15000);
+        }
+
         // C.1: Speculative execution - apply to local state immediately.
         try {
             nodeState.transfer(
@@ -298,6 +308,11 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             speculativeTransfers.add(requestId);
             completedTransactions.put(requestId, RequestResult.success());
 
+            // Notify threads waiting on causal dependencies.
+            synchronized (dependencyLock) {
+                dependencyLock.notifyAll();
+            }
+
             // Broadcast to sequencer (without waiting for block delivery).
             sequencerStub.broadcast(
                     BroadcastRequest.newBuilder().setTransaction(transaction).build());
@@ -308,6 +323,45 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             completedTransactions.put(requestId, RequestResult.failure(e));
             respondWithTransferError(e, responseObserver);
         }
+    }
+
+    /** C.1: Return the dependency lock so NodeSequencerClient can notify waiting threads. */
+    public Object getDependencyLock() {
+        return dependencyLock;
+    }
+
+    /**
+     * C.1: Block until all causal dependencies are satisfied (present in
+     * completedTransactions or speculativeTransfers), or until timeout.
+     */
+    private void waitForDependencies(List<String> deps, long timeoutMs) {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        synchronized (dependencyLock) {
+            while (!allDependenciesSatisfied(deps)) {
+                long remaining = deadline - System.currentTimeMillis();
+                if (remaining <= 0) {
+                    System.err.println("WARNING: Causal dependency timeout, proceeding anyway.");
+                    break;
+                }
+                try {
+                    dependencyLock.wait(remaining);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+    }
+
+    /** C.1: Check whether all dependency requestIds have been processed. */
+    private boolean allDependenciesSatisfied(List<String> deps) {
+        for (String depId : deps) {
+            if (!completedTransactions.containsKey(depId)
+                    && !speculativeTransfers.contains(depId)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override
