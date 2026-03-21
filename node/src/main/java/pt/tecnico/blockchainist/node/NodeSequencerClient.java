@@ -1,6 +1,7 @@
 package pt.tecnico.blockchainist.node;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import pt.tecnico.blockchainist.contract.Block;
@@ -27,6 +28,9 @@ public class NodeSequencerClient implements Runnable {
     // Shared with NodeServiceImpl: cached results for idempotent retries.
     private final Map<String, RequestResult> completedTransactions;
 
+    // C.1: Tracks requestIds of transfers applied speculatively by NodeServiceImpl.
+    private final Set<String> speculativeTransfers;
+
     // The next block number this node expects from the sequencer.
     private int nextBlockNumber = 0;
 
@@ -34,11 +38,13 @@ public class NodeSequencerClient implements Runnable {
             SequencerServiceGrpc.SequencerServiceBlockingStub stub,
             NodeState nodeState,
             Map<String, CompletableFuture<Throwable>> pendingTransactions,
-            Map<String, RequestResult> completedTransactions) {
+            Map<String, RequestResult> completedTransactions,
+            Set<String> speculativeTransfers) {
         this.stub = stub;
         this.nodeState = nodeState;
         this.pendingTransactions = pendingTransactions;
         this.completedTransactions = completedTransactions;
+        this.speculativeTransfers = speculativeTransfers;
     }
 
     /** Fetch all existing blocks from the sequencer (used at startup for B.2 sync). */
@@ -116,34 +122,45 @@ public class NodeSequencerClient implements Runnable {
     /**
      * Apply a single transaction to the local state and notify any waiting handler.
      * Stores the result in completedTransactions for idempotent retry support.
+     * C.1: Transfers already applied speculatively are not re-executed.
      */
     private void processTransaction(Transaction transaction) {
         Throwable error = null;
         String requestId = getRequestId(transaction);
-        try {
-            switch (transaction.getOperationCase()) {
-                case CREATE_WALLET:
-                    nodeState.createWallet(transaction.getCreateWallet().getUserId(), transaction.getCreateWallet().getWalletId());
-                    break;
-                case DELETE_WALLET:
-                    nodeState.deleteWallet(transaction.getDeleteWallet().getUserId(), transaction.getDeleteWallet().getWalletId());
-                    break;
-                case TRANSFER:
-                    nodeState.transfer(transaction.getTransfer().getSrcUserId(), transaction.getTransfer().getSrcWalletId(),
-                            transaction.getTransfer().getDstWalletId(), transaction.getTransfer().getValue());
-                    break;
-                default:
-                    System.out.println("Unknown operation: " + transaction.getOperationCase());
+
+        // C.1: If this transfer was already applied speculatively, skip re-execution.
+        boolean alreadySpeculative = requestId != null && !requestId.isBlank()
+                && speculativeTransfers.remove(requestId);
+
+        if (!alreadySpeculative) {
+            try {
+                switch (transaction.getOperationCase()) {
+                    case CREATE_WALLET:
+                        nodeState.createWallet(transaction.getCreateWallet().getUserId(), transaction.getCreateWallet().getWalletId());
+                        break;
+                    case DELETE_WALLET:
+                        nodeState.deleteWallet(transaction.getDeleteWallet().getUserId(), transaction.getDeleteWallet().getWalletId());
+                        break;
+                    case TRANSFER:
+                        nodeState.transfer(transaction.getTransfer().getSrcUserId(), transaction.getTransfer().getSrcWalletId(),
+                                transaction.getTransfer().getDstWalletId(), transaction.getTransfer().getValue());
+                        break;
+                    default:
+                        System.out.println("Unknown operation: " + transaction.getOperationCase());
+                }
+                System.out.println("Processed transaction: " + transaction);
+            } catch (Exception e) {
+                error = e;
+                System.err.println("Error processing transaction: " + e.getMessage());
             }
-            System.out.println("Processed transaction: " + transaction);
-        } catch (Exception e) {
-            error = e;
-            System.err.println("Error processing transaction: " + e.getMessage());
+        } else {
+            System.out.println("Skipped speculative transfer (already applied): " + requestId);
         }
 
         // Cache the result so that retried requests can return immediately.
         if (requestId != null && !requestId.isBlank()) {
-            completedTransactions.put(requestId, error == null ? RequestResult.success() : RequestResult.failure(error));
+            completedTransactions.putIfAbsent(requestId,
+                    error == null ? RequestResult.success() : RequestResult.failure(error));
         }
 
         // Complete the pending future to unblock the gRPC handler thread.
