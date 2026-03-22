@@ -53,6 +53,7 @@ public class NodeMain {
 
         NodeSequencerClient sequencerClient = new NodeSequencerClient(sequencerStub, nodeState, pendingTransactions, completedTransactions, speculativeTransfers);
         final NodeServiceImpl nodeService = new NodeServiceImpl(
+                org,
                 nodeState,
                 sequencerStub,
                 sequencerClient,

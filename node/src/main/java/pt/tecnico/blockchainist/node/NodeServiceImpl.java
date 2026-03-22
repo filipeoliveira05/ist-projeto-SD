@@ -6,6 +6,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.HashMap;
 
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -35,6 +36,24 @@ import pt.tecnico.blockchainist.node.domain.NodeState;
  */
 public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
+    /** Static mapping of userId → organization, as defined in the enunciado v1.3. */
+    private static final Map<String, String> USER_ORGANIZATIONS;
+    static {
+        Map<String, String> m = new HashMap<>();
+        m.put("BC", "OrgA");
+        m.put("Alice", "OrgA");
+        m.put("Bob", "OrgA");
+        m.put("Charlie", "OrgA");
+        m.put("David", "OrgB");
+        m.put("Emma", "OrgB");
+        m.put("Fred", "OrgB");
+        m.put("Ginger", "OrgC");
+        m.put("Henry", "OrgC");
+        m.put("Iris", "OrgC");
+        USER_ORGANIZATIONS = Map.copyOf(m);
+    }
+
+    private final String nodeOrganization;
     private final NodeState nodeState;
     private final SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub;
     private final NodeSequencerClient sequencerClient;
@@ -53,18 +72,38 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
     private final Object dependencyLock = new Object();
 
     public NodeServiceImpl(
+            String nodeOrganization,
             NodeState nodeState,
             SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub,
             NodeSequencerClient sequencerClient,
             Map<String, CompletableFuture<Throwable>> pendingTransactions,
             Map<String, RequestResult> completedTransactions,
             Set<String> speculativeTransfers) {
+        this.nodeOrganization = nodeOrganization;
         this.nodeState = nodeState;
         this.sequencerStub = sequencerStub;
         this.sequencerClient = sequencerClient;
         this.pendingTransactions = pendingTransactions;
         this.completedTransactions = completedTransactions;
         this.speculativeTransfers = speculativeTransfers;
+    }
+
+    /**
+     * G3: Verify that the userId belongs to this node's organization.
+     * Rejects requests from users that do not belong to this org.
+     */
+    private void validateUserOrganization(String userId) {
+        String userOrg = USER_ORGANIZATIONS.get(userId);
+        if (userOrg == null) {
+            throw Status.PERMISSION_DENIED
+                    .withDescription("Unknown user: " + userId)
+                    .asRuntimeException();
+        }
+        if (!userOrg.equals(nodeOrganization)) {
+            throw Status.PERMISSION_DENIED
+                    .withDescription("User " + userId + " does not belong to organization " + nodeOrganization)
+                    .asRuntimeException();
+        }
     }
 
     /** Assign a UUID if the client did not provide a requestId. */
@@ -207,6 +246,12 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
     @Override
     public void createWallet(CreateWalletRequest request, StreamObserver<CreateWalletResponse> responseObserver) {
         applyDelay();
+        try {
+            validateUserOrganization(request.getUserId());
+        } catch (io.grpc.StatusRuntimeException e) {
+            responseObserver.onError(e);
+            return;
+        }
         CreateWalletRequest normalizedRequest = normalizeCreateWalletRequest(request);
         String requestId = normalizedRequest.getRequestId();
         Transaction transaction = Transaction.newBuilder().setCreateWallet(normalizedRequest).build();
@@ -226,6 +271,12 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
     @Override
     public void deleteWallet(DeleteWalletRequest request, StreamObserver<DeleteWalletResponse> responseObserver) {
         applyDelay();
+        try {
+            validateUserOrganization(request.getUserId());
+        } catch (io.grpc.StatusRuntimeException e) {
+            responseObserver.onError(e);
+            return;
+        }
         DeleteWalletRequest normalizedRequest = normalizeDeleteWalletRequest(request);
         String requestId = normalizedRequest.getRequestId();
         Transaction transaction = Transaction.newBuilder().setDeleteWallet(normalizedRequest).build();
@@ -274,6 +325,12 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
     @Override
     public void transfer(TransferRequest request, StreamObserver<TransferResponse> responseObserver) {
         applyDelay();
+        try {
+            validateUserOrganization(request.getSrcUserId());
+        } catch (io.grpc.StatusRuntimeException e) {
+            responseObserver.onError(e);
+            return;
+        }
         TransferRequest normalizedRequest = normalizeTransferRequest(request);
         String requestId = normalizedRequest.getRequestId();
         Transaction transaction = Transaction.newBuilder().setTransfer(normalizedRequest).build();

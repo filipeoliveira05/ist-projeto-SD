@@ -4,6 +4,7 @@ Este documento descreve o projeto da cadeira de Sistemas Distribuídos 2025/2026
 
 Histórico de versões:
 
+- v1.3 (22/03/2026): clarificamos e simplificamos aspectos do desenho e operação das entregas C.1 e C.2
 - v1.2 (03/02/2026): corrigimos incoerências menores com o código inicial (_output_ a imprimir pelo cliente em caso de sucesso; nome da organização nos argumentos recebidos pelo cliente; _system property_ `-Ddebug`).
 - v1.1 (25/02/2026): adicionámos pequenas clarificações e operação `S` passou também a receber argumento de atraso.
 - v1.0 (19/02/2026): publicação do enunciado.
@@ -222,13 +223,28 @@ Objetivos:
 
 Objetivo: otimizar latência para transferências e introduzir autenticação criptográfica.
 
+- A solução não deve introduzir comunicação direta entre as réplicas (nos nós), ao contrário da solução proposta no artigo de Guerraoui et al. Ou seja, a arquitetura distribuída deve manter-se a mesma (cliente-nó-sequenciador).
+- Para cada organização, só pode existir um nó. Ou seja, deixa de haver replicação dentro de uma mesma organização. Consequentemente, o mecanismo de tolerância a faltas introduzido na B.2 não será testado quando avaliarmos a solução da C.1.
+- A associação de cada utilizador a uma dada organização passa a ser conhecida por cada nó, devendo um nó correto passar a verificar que os pedidos que recebe dos clientes são feitos por um utilizador da organização que esse nó representa. 
+- Como não se pretende implementar um *membership service provider* neste projeto, o conjunto de utilizadores e organizações é estático e pré-conhecido por cada nó, sendo o seguinte:
+	- Utilizador: BC, organização: OrgA
+	- Utilizador: Alice, organização: OrgA
+	- Utilizador: Bob, organização: OrgA
+	- Utilizador: Charlie, organização: OrgA
+	- Utilizador: David, organização: OrgB
+	- Utilizador: Emma, organização: OrgB
+	- Utilizador: Fred, organização: OrgB
+	- Utilizador: Ginger, organização: OrgC
+	- Utilizador: Henry, organização: OrgC
+	- Utilizador: Iris, organização: OrgC
+
 #### Entrega C.1 — Ordem Causal para Transferências
 
 Nesta fase, as operações de transferência devem ser tratadas de forma especial:
 
 - Em vez de exigir ordem total para todas as transferências, o sistema deve garantir apenas ordem causal entre transferências relacionadas (a justificação desta optimização está disponível em ["The Consensus Number of a Cryptocurrency", Gerraoui _et al._](https://doi.org/10.1145/3293611.3331589) );
-- Sugere-se o uso de mecanismos inspirados em relógios vetoriais ou dependências explícitas;
 - Isso permite que o nó confirme transferências ao cliente antes de estas serem entregues pelo sequenciador (num bloco).
+- Para duas operações de Broadcast (A e B) enviadas pelo mesmo nó, se a operação B se iniciar depois da anterior, A, ter terminado (ou seja depois de o nó ter recebido do sequenciador a resposta ao Broadcast da operação A), o sequenciador deverá garantir que A é ordenada na blockchain antes de B.
 
 As restantes operações (criaCarteira, eliminaCarteira) continuam a exigir ordem total.
 
@@ -245,6 +261,12 @@ No sequenciador:
 - Cada nó deve validar a assinatura do bloco antes de o aplicar.
 
 > No Fabric, é o MSP que oferece a infraestrutura de _PKI_. Como referido anteriormente, o MSP (e a PKI associada) estão fora do âmbito deste projeto. Em alternativa, assume-se que as chaves públicas de cada entidade (utilizadores, sequenciador) estão previamente distribuídas num ficheiro que deve ser lido por cada nó. Adicionalmente, as chaves privadas (dos utilizadores e do sequenciador) estão previamente guardadas em ficheiros aos quais o processo cliente e sequenciador podem aceder (respetivamente).
+
+Na solução entregue, além do que é especificado anteriormente neste enunciado, devem também assumir-se os seguintes pressupostos de segurança e confiança:
+- Cada utilizador confia no processo cliente que está a usar (e no qual se autenticou, fornecendo a sua chave privada) e confia nos nós da sua organização (os “nós conhecidos” passados ao cliente).
+- Cada organização tem apenas um nó ativo a cada momento.
+- O cliente interage com o nó da sua organização (cujo endereço é passado por argumento quando o cliente é lançado) usando um canal seguro em que o nó se autentica perante o cliente. No entanto, está fora do projeto implementar este canal seguro.
+- A interação entre os nós e o sequenciador **não** é feita por canal seguro. Isto permite que, no futuro, a entrega dos blocos seja feita usando algoritmos de difusão de mensagens por *gossip*, tal como descrito no artigo do Hyperledger Fabric. Nota: a difusão por gossip não faz parte do projeto de SD.
 
 ## 5. Processos
 
