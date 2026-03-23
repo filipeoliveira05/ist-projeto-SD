@@ -74,7 +74,7 @@ To run a node:
 mvn exec:java -Dexec.args="<port> <org> <sequencer_host>:<sequencer_port>" -pl node
 ```
 
-Example: `mvn exec:java -Dexec.args="2001 OrgCoin localhost:3001" -pl node`
+Example: `mvn exec:java -Dexec.args="2001 OrgA localhost:3001" -pl node`
 
 ### Run Client (Terminal 3)
 
@@ -84,7 +84,7 @@ To run a client:
 mvn exec:java -Dexec.args="<host>:<port>:<org> [<host>:<port>:<org> ...]" -pl client
 ```
 
-Example: `mvn exec:java -Dexec.args="localhost:2001:OrgCoin" -pl client`
+Example: `mvn exec:java -Dexec.args="localhost:2001:OrgA" -pl client`
 
 ## Tests
 
