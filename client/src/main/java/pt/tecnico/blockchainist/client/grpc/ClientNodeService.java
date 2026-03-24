@@ -1,5 +1,6 @@
 package pt.tecnico.blockchainist.client.grpc;
 
+import com.google.protobuf.ByteString;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Metadata;
@@ -35,6 +36,7 @@ public class ClientNodeService {
     private static final int MIN_DEADLINE_SECONDS = 10;
     private static final int DEADLINE_MARGIN_SECONDS = 2;
     private static final int CHANNEL_SHUTDOWN_TIMEOUT_SECONDS = 3;
+    private static final byte[] EMPTY_SIGNATURE = new byte[0];
 
     private final ManagedChannel channel;
 
@@ -79,50 +81,96 @@ public class ClientNodeService {
         return configuredStub.withDeadlineAfter(calculateDeadlineSeconds(delaySeconds), TimeUnit.SECONDS);
     }
 
-    public CreateWalletResponse createWallet(String userId, String walletId, String requestId, int delaySeconds) {
+    public CreateWalletResponse createWallet(
+            String userId,
+            String walletId,
+            String requestId,
+            byte[] signature,
+            int delaySeconds) {
         CreateWalletRequest request = CreateWalletRequest.newBuilder()
                 .setUserId(userId)
                 .setWalletId(walletId)
                 .setRequestId(requestId)
+                .setSignature(ByteString.copyFrom(signature))
                 .build();
         return getStubWithDelay(delaySeconds).createWallet(request);
+    }
+
+    // Backward-compatible overload used while C.2 signing integration is rolled out.
+    public CreateWalletResponse createWallet(String userId, String walletId, String requestId, int delaySeconds) {
+        return createWallet(userId, walletId, requestId, EMPTY_SIGNATURE, delaySeconds);
     }
 
     public void createWalletAsync(
             String userId,
             String walletId,
             String requestId,
+            byte[] signature,
             int delaySeconds,
             StreamObserver<CreateWalletResponse> responseObserver) {
         CreateWalletRequest request = CreateWalletRequest.newBuilder()
                 .setUserId(userId)
                 .setWalletId(walletId)
                 .setRequestId(requestId)
+                .setSignature(ByteString.copyFrom(signature))
                 .build();
         getAsyncStubWithDelay(delaySeconds).createWallet(request, responseObserver);
     }
 
-    public DeleteWalletResponse deleteWallet(String userId, String walletId, String requestId, int delaySeconds) {
+    // Backward-compatible overload used while C.2 signing integration is rolled out.
+    public void createWalletAsync(
+            String userId,
+            String walletId,
+            String requestId,
+            int delaySeconds,
+            StreamObserver<CreateWalletResponse> responseObserver) {
+        createWalletAsync(userId, walletId, requestId, EMPTY_SIGNATURE, delaySeconds, responseObserver);
+    }
+
+    public DeleteWalletResponse deleteWallet(
+            String userId,
+            String walletId,
+            String requestId,
+            byte[] signature,
+            int delaySeconds) {
         DeleteWalletRequest request = DeleteWalletRequest.newBuilder()
                 .setUserId(userId)
                 .setWalletId(walletId)
                 .setRequestId(requestId)
+                .setSignature(ByteString.copyFrom(signature))
                 .build();
         return getStubWithDelay(delaySeconds).deleteWallet(request);
+    }
+
+    // Backward-compatible overload used while C.2 signing integration is rolled out.
+    public DeleteWalletResponse deleteWallet(String userId, String walletId, String requestId, int delaySeconds) {
+        return deleteWallet(userId, walletId, requestId, EMPTY_SIGNATURE, delaySeconds);
     }
 
     public void deleteWalletAsync(
             String userId,
             String walletId,
             String requestId,
+            byte[] signature,
             int delaySeconds,
             StreamObserver<DeleteWalletResponse> responseObserver) {
         DeleteWalletRequest request = DeleteWalletRequest.newBuilder()
                 .setUserId(userId)
                 .setWalletId(walletId)
                 .setRequestId(requestId)
+                .setSignature(ByteString.copyFrom(signature))
                 .build();
         getAsyncStubWithDelay(delaySeconds).deleteWallet(request, responseObserver);
+    }
+
+    // Backward-compatible overload used while C.2 signing integration is rolled out.
+    public void deleteWalletAsync(
+            String userId,
+            String walletId,
+            String requestId,
+            int delaySeconds,
+            StreamObserver<DeleteWalletResponse> responseObserver) {
+        deleteWalletAsync(userId, walletId, requestId, EMPTY_SIGNATURE, delaySeconds, responseObserver);
     }
 
     public ReadBalanceResponse readBalance(String walletId, int delaySeconds) {
@@ -139,7 +187,15 @@ public class ClientNodeService {
         getAsyncStubWithDelay(delaySeconds).readBalance(request, responseObserver);
     }
 
-    public TransferResponse transfer(String srcUserId, String srcWalletId, String dstWalletId, long amount, String requestId, List<String> causalDependencies, int delaySeconds) {
+    public TransferResponse transfer(
+            String srcUserId,
+            String srcWalletId,
+            String dstWalletId,
+            long amount,
+            String requestId,
+            List<String> causalDependencies,
+            byte[] signature,
+            int delaySeconds) {
         TransferRequest request = TransferRequest.newBuilder()
                 .setSrcUserId(srcUserId)
                 .setSrcWalletId(srcWalletId)
@@ -147,8 +203,21 @@ public class ClientNodeService {
                 .setValue(amount)
                 .setRequestId(requestId)
                 .addAllCausalDependencies(causalDependencies)
+                .setSignature(ByteString.copyFrom(signature))
                 .build();
         return getStubWithDelay(delaySeconds).transfer(request);
+    }
+
+    // Backward-compatible overload used while C.2 signing integration is rolled out.
+    public TransferResponse transfer(
+            String srcUserId,
+            String srcWalletId,
+            String dstWalletId,
+            long amount,
+            String requestId,
+            List<String> causalDependencies,
+            int delaySeconds) {
+        return transfer(srcUserId, srcWalletId, dstWalletId, amount, requestId, causalDependencies, EMPTY_SIGNATURE, delaySeconds);
     }
 
     public void transferAsync(
@@ -158,6 +227,7 @@ public class ClientNodeService {
             long amount,
             String requestId,
             List<String> causalDependencies,
+            byte[] signature,
             int delaySeconds,
             StreamObserver<TransferResponse> responseObserver) {
         TransferRequest request = TransferRequest.newBuilder()
@@ -167,8 +237,31 @@ public class ClientNodeService {
                 .setValue(amount)
                 .setRequestId(requestId)
                 .addAllCausalDependencies(causalDependencies)
+                .setSignature(ByteString.copyFrom(signature))
                 .build();
         getAsyncStubWithDelay(delaySeconds).transfer(request, responseObserver);
+    }
+
+    // Backward-compatible overload used while C.2 signing integration is rolled out.
+    public void transferAsync(
+            String srcUserId,
+            String srcWalletId,
+            String dstWalletId,
+            long amount,
+            String requestId,
+            List<String> causalDependencies,
+            int delaySeconds,
+            StreamObserver<TransferResponse> responseObserver) {
+        transferAsync(
+                srcUserId,
+                srcWalletId,
+                dstWalletId,
+                amount,
+                requestId,
+                causalDependencies,
+                EMPTY_SIGNATURE,
+                delaySeconds,
+                responseObserver);
     }
 
     public GetBlockchainStateResponse getBlockchainState() {
