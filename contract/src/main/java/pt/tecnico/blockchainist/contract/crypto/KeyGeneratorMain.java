@@ -3,6 +3,9 @@ package pt.tecnico.blockchainist.contract.crypto;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Utility entry point to generate key pairs for a list of entities.
@@ -11,6 +14,19 @@ import java.security.KeyPair;
  * KeyGeneratorMain <output_dir> <entity1> [entity2] [entity3] ...
  */
 public final class KeyGeneratorMain {
+
+    private static final List<String> REQUIRED_ENTITIES = List.of(
+            "BC",
+            "Alice",
+            "Bob",
+            "Charlie",
+            "David",
+            "Emma",
+            "Fred",
+            "Ginger",
+            "Henry",
+            "Iris",
+            "sequencer");
 
     private KeyGeneratorMain() {
         // Utility class.
@@ -23,22 +39,21 @@ public final class KeyGeneratorMain {
         }
 
         String outputDir = args[0];
+        String[] entities = new String[args.length - 1];
+        System.arraycopy(args, 1, entities, 0, entities.length);
         Path outputDirPath = Path.of(outputDir);
         Path publicKeysPath = outputDirPath.resolve("public_keys");
 
         try {
+            validateRequiredEntities(entities);
+
             Files.createDirectories(outputDirPath);
 
             // Regenerate the public keys file from scratch in each run.
             Files.deleteIfExists(publicKeysPath);
             Files.createFile(publicKeysPath);
 
-            for (int i = 1; i < args.length; i++) {
-                String entityId = args[i];
-                if (entityId == null || entityId.isBlank()) {
-                    throw new IllegalArgumentException("Entity identifier cannot be empty");
-                }
-
+            for (String entityId : entities) {
                 KeyPair keyPair = CryptoUtils.generateKeyPair();
                 Path privateKeyPath = outputDirPath.resolve(entityId + ".priv");
 
@@ -48,6 +63,26 @@ public final class KeyGeneratorMain {
         } catch (Exception e) {
             System.err.println("Failed to generate keys: " + e.getMessage());
             System.exit(1);
+        }
+    }
+
+    private static void validateRequiredEntities(String[] entities) {
+        Set<String> provided = new LinkedHashSet<>();
+        for (String entityId : entities) {
+            if (entityId == null || entityId.isBlank()) {
+                throw new IllegalArgumentException("Entity identifier cannot be empty");
+            }
+            if (!provided.add(entityId)) {
+                throw new IllegalArgumentException("Duplicated entity identifier: " + entityId);
+            }
+        }
+
+        List<String> missing = REQUIRED_ENTITIES.stream()
+                .filter(entityId -> !provided.contains(entityId))
+                .toList();
+        if (!missing.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Missing required entities: " + String.join(", ", missing));
         }
     }
 }
