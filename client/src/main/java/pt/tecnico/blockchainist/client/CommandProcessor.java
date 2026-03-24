@@ -3,12 +3,14 @@ package pt.tecnico.blockchainist.client;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
+import java.security.PrivateKey;
 
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
@@ -50,14 +52,16 @@ public class CommandProcessor {
     // Sequential command counter shared across blocking and async commands
     private final AtomicLong commandCounter = new AtomicLong(0);
     private final ArrayList<ClientNodeService> nodes;
+    private final Map<String, PrivateKey> privateKeys;
 
     // C.1: Tracks requestIds of completed transactions for causal dependency tracking.
     // Transfers include this set as causal dependencies so that the node can enforce
     // causal ordering before speculative execution.
     private final Set<String> causalContext = new LinkedHashSet<>();
 
-    public CommandProcessor(ArrayList<ClientNodeService> nodes) {
+    public CommandProcessor(ArrayList<ClientNodeService> nodes, Map<String, PrivateKey> privateKeys) {
         this.nodes = nodes;
+        this.privateKeys = privateKeys;
     }
 
     /** Generate a unique request ID for idempotent transaction retries (B.2). */
