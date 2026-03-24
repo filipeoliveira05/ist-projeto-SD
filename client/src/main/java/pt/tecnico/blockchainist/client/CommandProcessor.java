@@ -1,5 +1,6 @@
 package pt.tecnico.blockchainist.client;
 
+import com.google.protobuf.Message;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -16,10 +17,13 @@ import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import pt.tecnico.blockchainist.client.grpc.ClientNodeService;
+import pt.tecnico.blockchainist.contract.CreateWalletRequest;
 import pt.tecnico.blockchainist.contract.CreateWalletResponse;
+import pt.tecnico.blockchainist.contract.DeleteWalletRequest;
 import pt.tecnico.blockchainist.contract.DeleteWalletResponse;
 import pt.tecnico.blockchainist.contract.ReadBalanceResponse;
 import pt.tecnico.blockchainist.contract.TransferResponse;
+import pt.tecnico.blockchainist.contract.crypto.CryptoUtils;
 
 /**
  * Reads user commands from stdin and dispatches them to blockchain nodes.
@@ -67,6 +71,14 @@ public class CommandProcessor {
     /** Generate a unique request ID for idempotent transaction retries (B.2). */
     private static String newRequestId() {
         return UUID.randomUUID().toString();
+    }
+
+    private byte[] signRequest(String userId, Message unsignedRequest) {
+        PrivateKey key = privateKeys.get(userId);
+        if (key == null) {
+            throw new IllegalArgumentException("No private key found for user: " + userId);
+        }
+        return CryptoUtils.sign(key, unsignedRequest.toByteArray());
     }
 
     /** C.1: Add a requestId to the causal context, pruning oldest entries if needed. */
@@ -284,12 +296,27 @@ public class CommandProcessor {
         Integer nodeIndex = Integer.parseInt(split[3]);
         Integer nodeDelay = Integer.parseInt(split[4]);
         String requestId = newRequestId();
+        CreateWalletRequest unsignedRequest = CreateWalletRequest.newBuilder()
+                .setUserId(userId)
+                .setWalletId(walletId)
+                .setRequestId(requestId)
+                .build();
+        byte[] signature;
+        try {
+            signature = signRequest(userId, unsignedRequest);
+        } catch (IllegalArgumentException e) {
+            synchronized (System.out) {
+                System.out.println();
+                System.err.println(commandNumber + " " + e.getMessage());
+            }
+            return;
+        }
 
         if (isBlocking) {
             try {
                 var response = invokeWithRoundRobinRetry(
                         nodeIndex,
-                        node -> node.createWallet(userId, walletId, requestId, nodeDelay));
+                        node -> node.createWallet(userId, walletId, requestId, signature, nodeDelay));
                 // C.1: Track successful create in causal context.
                 addToCausalContext(requestId);
                 synchronized (System.out) {
@@ -305,7 +332,7 @@ public class CommandProcessor {
             this.<CreateWalletResponse>invokeAsyncWithRoundRobinRetry(
                     nodeIndex,
                     commandNumber,
-                    (node, observer) -> node.createWalletAsync(userId, walletId, requestId, nodeDelay, observer),
+                    (node, observer) -> node.createWalletAsync(userId, walletId, requestId, signature, nodeDelay, observer),
                     (CreateWalletResponse response) -> {
                         synchronized (System.out) {
                             System.out.println("OK " + commandNumber);
@@ -325,12 +352,27 @@ public class CommandProcessor {
         Integer nodeIndex = Integer.parseInt(split[3]);
         Integer nodeDelay = Integer.parseInt(split[4]);
         String requestId = newRequestId();
+        DeleteWalletRequest unsignedRequest = DeleteWalletRequest.newBuilder()
+                .setUserId(userId)
+                .setWalletId(walletId)
+                .setRequestId(requestId)
+                .build();
+        byte[] signature;
+        try {
+            signature = signRequest(userId, unsignedRequest);
+        } catch (IllegalArgumentException e) {
+            synchronized (System.out) {
+                System.out.println();
+                System.err.println(commandNumber + " " + e.getMessage());
+            }
+            return;
+        }
 
         if (isBlocking) {
             try {
                 var response = invokeWithRoundRobinRetry(
                         nodeIndex,
-                        node -> node.deleteWallet(userId, walletId, requestId, nodeDelay));
+                        node -> node.deleteWallet(userId, walletId, requestId, signature, nodeDelay));
                 // C.1: Track successful delete in causal context.
                 addToCausalContext(requestId);
                 synchronized (System.out) {
@@ -346,7 +388,7 @@ public class CommandProcessor {
             this.<DeleteWalletResponse>invokeAsyncWithRoundRobinRetry(
                     nodeIndex,
                     commandNumber,
-                    (node, observer) -> node.deleteWalletAsync(userId, walletId, requestId, nodeDelay, observer),
+                    (node, observer) -> node.deleteWalletAsync(userId, walletId, requestId, signature, nodeDelay, observer),
                     (DeleteWalletResponse response) -> {
                         synchronized (System.out) {
                             System.out.println("OK " + commandNumber);
