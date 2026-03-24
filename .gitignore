@@ -25,3 +25,6 @@ replay_pid*
 
 # Plan
 plan.md
+
+# Local cryptographic keys
+keys/
