@@ -1,15 +1,16 @@
 package pt.tecnico.blockchainist.node;
 
-import com.google.protobuf.ByteString;
-import com.google.protobuf.Message;
+import java.security.PublicKey;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.security.PublicKey;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.HashMap;
+
+import com.google.protobuf.ByteString;
+import com.google.protobuf.Message;
 
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -130,6 +131,27 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** Verify createWallet signature using the user's registered public key. */
+    private boolean verifyCreateWalletSignature(CreateWalletRequest request) {
+        CreateWalletRequest unsigned = request.toBuilder().clearSignature().build();
+        return verifySignatureForEntity(request.getUserId(), unsigned, request.getSignature());
+    }
+
+    /** Verify deleteWallet signature using the user's registered public key. */
+    private boolean verifyDeleteWalletSignature(DeleteWalletRequest request) {
+        DeleteWalletRequest unsigned = request.toBuilder().clearSignature().build();
+        return verifySignatureForEntity(request.getUserId(), unsigned, request.getSignature());
+    }
+
+    /**
+     * Verify transfer signature using the source user's registered public key.
+     * clearSignature() preserves causal_dependencies for correct byte-level verification.
+     */
+    private boolean verifyTransferSignature(TransferRequest request) {
+        TransferRequest unsigned = request.toBuilder().clearSignature().build();
+        return verifySignatureForEntity(request.getSrcUserId(), unsigned, request.getSignature());
     }
 
     /** Assign a UUID if the client did not provide a requestId. */
