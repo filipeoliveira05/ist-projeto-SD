@@ -300,6 +300,12 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             responseObserver.onError(e);
             return;
         }
+        if (!verifyCreateWalletSignature(request)) {
+            responseObserver.onError(Status.UNAUTHENTICATED
+                    .withDescription("Invalid signature for user: " + request.getUserId())
+                    .asRuntimeException());
+            return;
+        }
         CreateWalletRequest normalizedRequest = normalizeCreateWalletRequest(request);
         String requestId = normalizedRequest.getRequestId();
         Transaction transaction = Transaction.newBuilder().setCreateWallet(normalizedRequest).build();
@@ -323,6 +329,12 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             validateUserOrganization(request.getUserId());
         } catch (io.grpc.StatusRuntimeException e) {
             responseObserver.onError(e);
+            return;
+        }
+        if (!verifyDeleteWalletSignature(request)) {
+            responseObserver.onError(Status.UNAUTHENTICATED
+                    .withDescription("Invalid signature for user: " + request.getUserId())
+                    .asRuntimeException());
             return;
         }
         DeleteWalletRequest normalizedRequest = normalizeDeleteWalletRequest(request);
@@ -377,6 +389,12 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             validateUserOrganization(request.getSrcUserId());
         } catch (io.grpc.StatusRuntimeException e) {
             responseObserver.onError(e);
+            return;
+        }
+        if (!verifyTransferSignature(request)) {
+            responseObserver.onError(Status.UNAUTHENTICATED
+                    .withDescription("Invalid signature for user: " + request.getSrcUserId())
+                    .asRuntimeException());
             return;
         }
         TransferRequest normalizedRequest = normalizeTransferRequest(request);
