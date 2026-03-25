@@ -22,16 +22,19 @@ public class NodeMain {
     public static void main(String[] args) throws IOException, InterruptedException {
         System.out.println(NodeMain.class.getSimpleName());
 
-        // Validate arguments: <port> <org> <sequencerHost:sequencerPort>
-        if (args.length < 3) {
+        // Validate arguments: <port> <org> <sequencerHost:sequencerPort> <public_keys_file>
+        if (args.length < 4) {
             System.err.println("Argument(s) missing!");
-            System.err.printf("Usage: java %s <port> <org> <sequencerHost:sequencerPort>%n", NodeMain.class.getName());
+            System.err.printf(
+                    "Usage: java %s <port> <org> <sequencerHost:sequencerPort> <public_keys_file>%n",
+                    NodeMain.class.getName());
             return;
         }
 
         final int port = Integer.parseInt(args[0]);
         final String org = args[1];
         final String sequencerAddress = args[2];
+        final String publicKeysFile = args[3];
         
         String[] sequencerSplit = sequencerAddress.split(":");
         String sequencerHost = sequencerSplit[0];
