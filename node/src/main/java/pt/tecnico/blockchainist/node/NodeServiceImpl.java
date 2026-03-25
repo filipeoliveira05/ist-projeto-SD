@@ -1,5 +1,7 @@
 package pt.tecnico.blockchainist.node;
 
+import com.google.protobuf.ByteString;
+import com.google.protobuf.Message;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -25,6 +27,7 @@ import pt.tecnico.blockchainist.contract.SequencerServiceGrpc;
 import pt.tecnico.blockchainist.contract.Transaction;
 import pt.tecnico.blockchainist.contract.TransferRequest;
 import pt.tecnico.blockchainist.contract.TransferResponse;
+import pt.tecnico.blockchainist.contract.crypto.CryptoUtils;
 import pt.tecnico.blockchainist.node.domain.NodeState;
 
 /**
@@ -107,6 +110,25 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             throw Status.PERMISSION_DENIED
                     .withDescription("User " + userId + " does not belong to organization " + nodeOrganization)
                     .asRuntimeException();
+        }
+    }
+
+    /**
+     * Shared signature verification helper for C.2 request-specific validators.
+     * Returns false if key/signature is missing or verification fails.
+     */
+    private boolean verifySignatureForEntity(String entityId, Message unsignedRequest, ByteString signatureBytes) {
+        if (entityId == null || entityId.isBlank()) {
+            return false;
+        }
+        PublicKey key = publicKeys.get(entityId);
+        if (key == null || signatureBytes == null || signatureBytes.isEmpty()) {
+            return false;
+        }
+        try {
+            return CryptoUtils.verify(key, unsignedRequest.toByteArray(), signatureBytes.toByteArray());
+        } catch (Exception e) {
+            return false;
         }
     }
 
