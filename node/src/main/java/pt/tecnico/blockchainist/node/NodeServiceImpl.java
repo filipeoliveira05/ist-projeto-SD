@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.security.PublicKey;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.HashMap;
@@ -54,6 +55,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
     }
 
     private final String nodeOrganization;
+    private final Map<String, PublicKey> publicKeys;
     private final NodeState nodeState;
     private final SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub;
     private final NodeSequencerClient sequencerClient;
@@ -73,6 +75,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
     public NodeServiceImpl(
             String nodeOrganization,
+            Map<String, PublicKey> publicKeys,
             NodeState nodeState,
             SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub,
             NodeSequencerClient sequencerClient,
@@ -80,6 +83,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             Map<String, RequestResult> completedTransactions,
             Set<String> speculativeTransfers) {
         this.nodeOrganization = nodeOrganization;
+        this.publicKeys = publicKeys;
         this.nodeState = nodeState;
         this.sequencerStub = sequencerStub;
         this.sequencerClient = sequencerClient;
