@@ -69,14 +69,16 @@
 						</goals>
 					</execution>
 				</executions>
-				<configuration>
-					<mainClass>${mainclass}</mainClass>
-					<arguments>
-						<!-- one argument per node-->
-						<argument>${node.host}:${node.port}:${node.org}</argument>
-					</arguments>
-				</configuration>
-			</plugin>
+					<configuration>
+						<mainClass>${mainclass}</mainClass>
+						<arguments>
+							<!-- keys directory -->
+							<argument>keys</argument>
+							<!-- one argument per node -->
+							<argument>${node.host}:${node.port}:${node.org}</argument>
+						</arguments>
+					</configuration>
+				</plugin>
 		</plugins>
 	</build>
 
