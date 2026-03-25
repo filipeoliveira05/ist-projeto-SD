@@ -22,6 +22,7 @@ import pt.tecnico.blockchainist.contract.CreateWalletResponse;
 import pt.tecnico.blockchainist.contract.DeleteWalletRequest;
 import pt.tecnico.blockchainist.contract.DeleteWalletResponse;
 import pt.tecnico.blockchainist.contract.ReadBalanceResponse;
+import pt.tecnico.blockchainist.contract.TransferRequest;
 import pt.tecnico.blockchainist.contract.TransferResponse;
 import pt.tecnico.blockchainist.contract.crypto.CryptoUtils;
 
@@ -450,12 +451,38 @@ public class CommandProcessor {
 
         // C.1: Capture causal dependencies before sending the transfer.
         List<String> deps = snapshotCausalContext();
+        TransferRequest unsignedRequest = TransferRequest.newBuilder()
+                .setSrcUserId(sourceUserId)
+                .setSrcWalletId(sourceWalletId)
+                .setDstWalletId(destinationWalletId)
+                .setValue(amount)
+                .setRequestId(requestId)
+                .addAllCausalDependencies(deps)
+                .build();
+        byte[] signature;
+        try {
+            signature = signRequest(sourceUserId, unsignedRequest);
+        } catch (IllegalArgumentException e) {
+            synchronized (System.out) {
+                System.out.println();
+                System.err.println(commandNumber + " " + e.getMessage());
+            }
+            return;
+        }
 
         if (isBlocking) {
             try {
                 var response = invokeWithRoundRobinRetry(
                         nodeIndex,
-                        node -> node.transfer(sourceUserId, sourceWalletId, destinationWalletId, amount, requestId, deps, nodeDelay));
+                        node -> node.transfer(
+                                sourceUserId,
+                                sourceWalletId,
+                                destinationWalletId,
+                                amount,
+                                requestId,
+                                deps,
+                                signature,
+                                nodeDelay));
                 // C.1: Track successful transfer in causal context.
                 addToCausalContext(requestId);
                 synchronized (System.out) {
@@ -471,7 +498,16 @@ public class CommandProcessor {
             this.<TransferResponse>invokeAsyncWithRoundRobinRetry(
                     nodeIndex,
                     commandNumber,
-                    (node, observer) -> node.transferAsync(sourceUserId, sourceWalletId, destinationWalletId, amount, requestId, deps, nodeDelay, observer),
+                    (node, observer) -> node.transferAsync(
+                            sourceUserId,
+                            sourceWalletId,
+                            destinationWalletId,
+                            amount,
+                            requestId,
+                            deps,
+                            signature,
+                            nodeDelay,
+                            observer),
                     (TransferResponse response) -> {
                         synchronized (System.out) {
                             System.out.println("OK " + commandNumber);
