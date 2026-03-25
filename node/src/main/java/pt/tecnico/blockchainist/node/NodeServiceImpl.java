@@ -1,12 +1,16 @@
 package pt.tecnico.blockchainist.node;
 
+import java.security.PublicKey;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.HashMap;
+
+import com.google.protobuf.ByteString;
+import com.google.protobuf.Message;
 
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -24,6 +28,7 @@ import pt.tecnico.blockchainist.contract.SequencerServiceGrpc;
 import pt.tecnico.blockchainist.contract.Transaction;
 import pt.tecnico.blockchainist.contract.TransferRequest;
 import pt.tecnico.blockchainist.contract.TransferResponse;
+import pt.tecnico.blockchainist.contract.crypto.CryptoUtils;
 import pt.tecnico.blockchainist.node.domain.NodeState;
 
 /**
@@ -54,6 +59,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
     }
 
     private final String nodeOrganization;
+    private final Map<String, PublicKey> publicKeys;
     private final NodeState nodeState;
     private final SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub;
     private final NodeSequencerClient sequencerClient;
@@ -73,6 +79,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
     public NodeServiceImpl(
             String nodeOrganization,
+            Map<String, PublicKey> publicKeys,
             NodeState nodeState,
             SequencerServiceGrpc.SequencerServiceBlockingStub sequencerStub,
             NodeSequencerClient sequencerClient,
@@ -80,6 +87,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             Map<String, RequestResult> completedTransactions,
             Set<String> speculativeTransfers) {
         this.nodeOrganization = nodeOrganization;
+        this.publicKeys = publicKeys;
         this.nodeState = nodeState;
         this.sequencerStub = sequencerStub;
         this.sequencerClient = sequencerClient;
@@ -104,6 +112,46 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
                     .withDescription("User " + userId + " does not belong to organization " + nodeOrganization)
                     .asRuntimeException();
         }
+    }
+
+    /**
+     * Shared signature verification helper for C.2 request-specific validators.
+     * Returns false if key/signature is missing or verification fails.
+     */
+    private boolean verifySignatureForEntity(String entityId, Message unsignedRequest, ByteString signatureBytes) {
+        if (entityId == null || entityId.isBlank()) {
+            return false;
+        }
+        PublicKey key = publicKeys.get(entityId);
+        if (key == null || signatureBytes == null || signatureBytes.isEmpty()) {
+            return false;
+        }
+        try {
+            return CryptoUtils.verify(key, unsignedRequest.toByteArray(), signatureBytes.toByteArray());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Verify createWallet signature using the user's registered public key. */
+    private boolean verifyCreateWalletSignature(CreateWalletRequest request) {
+        CreateWalletRequest unsigned = request.toBuilder().clearSignature().build();
+        return verifySignatureForEntity(request.getUserId(), unsigned, request.getSignature());
+    }
+
+    /** Verify deleteWallet signature using the user's registered public key. */
+    private boolean verifyDeleteWalletSignature(DeleteWalletRequest request) {
+        DeleteWalletRequest unsigned = request.toBuilder().clearSignature().build();
+        return verifySignatureForEntity(request.getUserId(), unsigned, request.getSignature());
+    }
+
+    /**
+     * Verify transfer signature using the source user's registered public key.
+     * clearSignature() preserves causal_dependencies for correct byte-level verification.
+     */
+    private boolean verifyTransferSignature(TransferRequest request) {
+        TransferRequest unsigned = request.toBuilder().clearSignature().build();
+        return verifySignatureForEntity(request.getSrcUserId(), unsigned, request.getSignature());
     }
 
     /** Assign a UUID if the client did not provide a requestId. */
@@ -252,6 +300,12 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             responseObserver.onError(e);
             return;
         }
+        if (!verifyCreateWalletSignature(request)) {
+            responseObserver.onError(Status.UNAUTHENTICATED
+                    .withDescription("Invalid signature for user: " + request.getUserId())
+                    .asRuntimeException());
+            return;
+        }
         CreateWalletRequest normalizedRequest = normalizeCreateWalletRequest(request);
         String requestId = normalizedRequest.getRequestId();
         Transaction transaction = Transaction.newBuilder().setCreateWallet(normalizedRequest).build();
@@ -275,6 +329,12 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             validateUserOrganization(request.getUserId());
         } catch (io.grpc.StatusRuntimeException e) {
             responseObserver.onError(e);
+            return;
+        }
+        if (!verifyDeleteWalletSignature(request)) {
+            responseObserver.onError(Status.UNAUTHENTICATED
+                    .withDescription("Invalid signature for user: " + request.getUserId())
+                    .asRuntimeException());
             return;
         }
         DeleteWalletRequest normalizedRequest = normalizeDeleteWalletRequest(request);
@@ -329,6 +389,12 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
             validateUserOrganization(request.getSrcUserId());
         } catch (io.grpc.StatusRuntimeException e) {
             responseObserver.onError(e);
+            return;
+        }
+        if (!verifyTransferSignature(request)) {
+            responseObserver.onError(Status.UNAUTHENTICATED
+                    .withDescription("Invalid signature for user: " + request.getSrcUserId())
+                    .asRuntimeException());
             return;
         }
         TransferRequest normalizedRequest = normalizeTransferRequest(request);

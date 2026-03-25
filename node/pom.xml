@@ -71,13 +71,14 @@
 				</executions>
 				<configuration>
 					<mainClass>${mainclass}</mainClass>
-					<arguments>
-						<argument>${node.port}</argument>
-						<argument>${node.org}</argument>
-						<argument>${sequencer.host}:${sequencer.port}</argument>
-					</arguments>
-				</configuration>
-			</plugin>
+						<arguments>
+							<argument>${node.port}</argument>
+							<argument>${node.org}</argument>
+							<argument>${sequencer.host}:${sequencer.port}</argument>
+							<argument>keys/public_keys</argument>
+						</arguments>
+					</configuration>
+				</plugin>
 		</plugins>
 	</build>
 

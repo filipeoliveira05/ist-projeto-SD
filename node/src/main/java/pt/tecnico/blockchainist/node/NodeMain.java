@@ -1,6 +1,7 @@
 package pt.tecnico.blockchainist.node;
 
 import java.io.IOException;
+import java.security.PublicKey;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -12,6 +13,7 @@ import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.ServerInterceptors;
 import pt.tecnico.blockchainist.contract.SequencerServiceGrpc;
+import pt.tecnico.blockchainist.contract.crypto.CryptoUtils;
 import pt.tecnico.blockchainist.node.domain.NodeState;
 
 /**
@@ -22,16 +24,21 @@ public class NodeMain {
     public static void main(String[] args) throws IOException, InterruptedException {
         System.out.println(NodeMain.class.getSimpleName());
 
-        // Validate arguments: <port> <org> <sequencerHost:sequencerPort>
-        if (args.length < 3) {
+        // Validate arguments: <port> <org> <sequencerHost:sequencerPort> <public_keys_file>
+        if (args.length < 4) {
             System.err.println("Argument(s) missing!");
-            System.err.printf("Usage: java %s <port> <org> <sequencerHost:sequencerPort>%n", NodeMain.class.getName());
+            System.err.printf(
+                    "Usage: java %s <port> <org> <sequencerHost:sequencerPort> <public_keys_file>%n",
+                    NodeMain.class.getName());
             return;
         }
 
         final int port = Integer.parseInt(args[0]);
         final String org = args[1];
         final String sequencerAddress = args[2];
+        final String publicKeysFile = args[3];
+        final Map<String, PublicKey> publicKeys = CryptoUtils.loadPublicKeys(publicKeysFile);
+        System.out.println("Loaded public keys: " + publicKeys.size());
         
         String[] sequencerSplit = sequencerAddress.split(":");
         String sequencerHost = sequencerSplit[0];
@@ -54,6 +61,7 @@ public class NodeMain {
         NodeSequencerClient sequencerClient = new NodeSequencerClient(sequencerStub, nodeState, pendingTransactions, completedTransactions, speculativeTransfers);
         final NodeServiceImpl nodeService = new NodeServiceImpl(
                 org,
+                publicKeys,
                 nodeState,
                 sequencerStub,
                 sequencerClient,
