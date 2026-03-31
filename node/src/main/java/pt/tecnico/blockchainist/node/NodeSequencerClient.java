@@ -77,6 +77,7 @@ public class NodeSequencerClient implements Runnable {
         return catchUpToLatest();
     }
 
+    /** Set the next expected block number (used after initial sync). */
     public void setNextBlockNumber(int blockNumber) {
         if (blockNumber < 0) {
             throw new IllegalArgumentException("nextBlockNumber cannot be negative");
@@ -253,6 +254,7 @@ public class NodeSequencerClient implements Runnable {
         }
     }
 
+    /** Extract the requestId from a transaction regardless of its operation type. */
     private String getRequestId(Transaction transaction) {
         return switch (transaction.getOperationCase()) {
             case CREATE_WALLET -> transaction.getCreateWallet().getRequestId();

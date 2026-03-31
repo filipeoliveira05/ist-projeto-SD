@@ -80,6 +80,8 @@ public class ClientNodeService {
         return configuredStub.withDeadlineAfter(calculateDeadlineSeconds(delaySeconds), TimeUnit.SECONDS);
     }
 
+    // ---- Create Wallet RPC (blocking + async) ----
+
     public CreateWalletResponse createWallet(
             String userId,
             String walletId,
@@ -110,6 +112,8 @@ public class ClientNodeService {
                 .build();
         getAsyncStubWithDelay(delaySeconds).createWallet(request, responseObserver);
     }
+
+    // ---- Delete Wallet RPC (blocking + async) ----
 
     public DeleteWalletResponse deleteWallet(
             String userId,
@@ -142,6 +146,8 @@ public class ClientNodeService {
         getAsyncStubWithDelay(delaySeconds).deleteWallet(request, responseObserver);
     }
 
+    // ---- Read Balance RPC (blocking + async) ----
+
     public ReadBalanceResponse readBalance(String walletId, int delaySeconds) {
         ReadBalanceRequest request = ReadBalanceRequest.newBuilder()
                 .setWalletId(walletId)
@@ -155,6 +161,8 @@ public class ClientNodeService {
                 .build();
         getAsyncStubWithDelay(delaySeconds).readBalance(request, responseObserver);
     }
+
+    // ---- Transfer RPC (blocking + async) ----
 
     public TransferResponse transfer(
             String srcUserId,
@@ -199,6 +207,9 @@ public class ClientNodeService {
         getAsyncStubWithDelay(delaySeconds).transfer(request, responseObserver);
     }
 
+    // ---- Debug / Blockchain State RPC ----
+
+    /** Request the full blockchain state from the node (debug command B). */
     public GetBlockchainStateResponse getBlockchainState() {
         GetBlockchainStateRequest request = GetBlockchainStateRequest.newBuilder().build();
         return stub.withDeadlineAfter(calculateDeadlineSeconds(0), TimeUnit.SECONDS).getBlockchainState(request);

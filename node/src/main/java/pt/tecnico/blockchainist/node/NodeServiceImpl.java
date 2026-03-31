@@ -198,6 +198,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
         return request.toBuilder().setRequestId(requestId).build();
     }
 
+    /** Rebuild the deleteWallet request with a valid requestId if one was missing. */
     private static DeleteWalletRequest normalizeDeleteWalletRequest(DeleteWalletRequest request) {
         String requestId = ensureRequestId(request.getRequestId());
         if (requestId.equals(request.getRequestId())) {
@@ -206,6 +207,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
         return request.toBuilder().setRequestId(requestId).build();
     }
 
+    /** Rebuild the transfer request with a valid requestId if one was missing. */
     private static TransferRequest normalizeTransferRequest(TransferRequest request) {
         String requestId = ensureRequestId(request.getRequestId());
         if (requestId.equals(request.getRequestId())) {
@@ -214,6 +216,7 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
         return request.toBuilder().setRequestId(requestId).build();
     }
 
+    /** Extract a human-readable message from a throwable, falling back to toString(). */
     private static String describe(Throwable error) {
         String message = error.getMessage();
         return message == null ? error.toString() : message;

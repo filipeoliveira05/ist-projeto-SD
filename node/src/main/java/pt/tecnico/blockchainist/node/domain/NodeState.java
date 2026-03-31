@@ -37,6 +37,7 @@ public class NodeState {
         balances.put(bcWallet, 1000L);
     }
 
+    /** Create a new wallet owned by the given user with zero initial balance. */
     public void createWallet(String userId, String walletId) {
         rwLock.writeLock().lock();
         try {
@@ -50,6 +51,7 @@ public class NodeState {
         }
     }
 
+    /** Delete a wallet if it exists, is owned by the user, and has zero balance. */
     public void deleteWallet(String userId, String walletId) {
         rwLock.writeLock().lock();
         try {
@@ -69,6 +71,7 @@ public class NodeState {
         }
     }
 
+    /** Transfer {@code amount} from source to destination wallet, validating ownership and balance. */
     public void transfer(String srcUserId, String srcWalletId, String dstWalletId, Long amount) {
         rwLock.writeLock().lock();
         try {
@@ -95,6 +98,7 @@ public class NodeState {
         }
     }
 
+    /** Return the current balance of the given wallet. */
     public long readBalance(String walletId) {
         rwLock.readLock().lock();
         try {
@@ -107,6 +111,7 @@ public class NodeState {
         }
     }
 
+    /** Append a delivered block to the local blockchain. */
     public void addBlock(Block block) {
         rwLock.writeLock().lock();
         try {
@@ -116,6 +121,7 @@ public class NodeState {
         }
     }
 
+    /** Return a snapshot of the current blockchain (list of delivered blocks). */
     public List<Block> getBlockchain() {
         rwLock.readLock().lock();
         try {

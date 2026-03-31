@@ -115,6 +115,7 @@ public class CommandProcessor {
         return code == Status.Code.UNAVAILABLE || code == Status.Code.DEADLINE_EXCEEDED;
     }
 
+    /** Convert any throwable into a StatusRuntimeException for uniform error handling. */
     private StatusRuntimeException toStatusRuntimeException(Throwable throwable) {
         if (throwable instanceof StatusRuntimeException) {
             return (StatusRuntimeException) throwable;
@@ -122,6 +123,7 @@ public class CommandProcessor {
         return Status.fromThrowable(throwable).asRuntimeException();
     }
 
+    /** Extract a human-readable description from a gRPC status, falling back to the code name. */
     private String describeStatus(StatusRuntimeException e) {
         String description = e.getStatus().getDescription();
         return (description == null || description.isBlank())
@@ -202,6 +204,7 @@ public class CommandProcessor {
         });
     }
 
+    /** Gracefully shut down all node channels to avoid lingering gRPC threads. */
     private void shutdownNodes() {
         for (ClientNodeService node : nodes) {
             try {
@@ -212,6 +215,7 @@ public class CommandProcessor {
         }
     }
 
+    /** Main interactive loop: read commands from stdin until the user types X. */
     void userInputLoop() {
         boolean exit = false;
 
@@ -288,6 +292,7 @@ public class CommandProcessor {
         }
     }
 
+    /** Handle create-wallet command (C/c): sign, send, and track causal context. */
     private void create(String[] split, boolean isBlocking) {
         this.checkCreateCommandArgs(split);
 
@@ -344,6 +349,7 @@ public class CommandProcessor {
         }
     }
 
+    /** Handle delete-wallet command (E/e): sign, send, and track causal context. */
     private void delete(String[] split, boolean isBlocking) {
         this.checkDeleteCommandArgs(split);
 
@@ -400,6 +406,7 @@ public class CommandProcessor {
         }
     }
 
+    /** Handle read-balance command (S/s): query a node for the wallet balance. */
     private void balance(String[] split, boolean isBlocking) {
         this.checkBalanceCommandArgs(split);
 
@@ -437,6 +444,7 @@ public class CommandProcessor {
         }
     }
 
+    /** Handle transfer command (T/t): sign with causal deps, send, and track context. */
     private void transfer(String[] split, boolean isBlocking) {
         this.checkTransferCommandArgs(split);
 
@@ -518,6 +526,7 @@ public class CommandProcessor {
         }
     }
 
+    /** Handle debug command (B): dump the full blockchain state from a node. */
     private void debugBlockchainState(String[] split) {
         this.checkDebugBlockchainStateArgs(split);
 
@@ -536,6 +545,7 @@ public class CommandProcessor {
         }
     }
 
+    /** Handle pause command (P): sleep for the given number of seconds. */
     private void pause(String[] split) {
         this.checkPauseArgs(split);
 

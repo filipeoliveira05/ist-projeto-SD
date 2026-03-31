@@ -93,6 +93,7 @@ public class SequencerState {
         return seqNumber;
     }
 
+    /** Extract the requestId from a transaction regardless of its operation type. */
     private String getRequestId(Transaction transaction) {
         return switch (transaction.getOperationCase()) {
             case CREATE_WALLET -> transaction.getCreateWallet().getRequestId();
