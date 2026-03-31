@@ -1,0 +1,19 @@
+C Alice cA 0 0
+C Bob cB 0 0
+C Charlie cC 0 0
+T Alice cA cB 10 0 0
+T BC bc cA 200 0 0
+T BC bc cB 300 0 0
+T Alice cA cC 100 0 0
+T Bob cB cC 150 0 0
+S cA 0 0
+S cB 0 0
+S cC 0 0
+S bc 0 0
+T Charlie cC bc 250 0 0
+E Charlie cC 0 0
+T Alice cA bc 100 0 0
+E Alice cA 0 0
+T Bob cB bc 150 0 0
+E Bob cB 0 0
+X
