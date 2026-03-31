@@ -75,6 +75,7 @@
 						<argument>${sequencer.port}</argument>
 						<argument>${block.max}</argument>
 						<argument>${block.timeout}</argument>
+						<argument>keys/sequencer.priv</argument>
 					</arguments>
 				</configuration>
 			</plugin>

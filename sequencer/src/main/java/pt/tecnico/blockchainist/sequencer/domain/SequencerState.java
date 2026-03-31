@@ -1,5 +1,6 @@
 package pt.tecnico.blockchainist.sequencer.domain;
 
+import java.security.PrivateKey;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -9,8 +10,10 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
+import com.google.protobuf.ByteString;
 import pt.tecnico.blockchainist.contract.Block;
 import pt.tecnico.blockchainist.contract.Transaction;
+import pt.tecnico.blockchainist.contract.crypto.CryptoUtils;
 
 /**
  * Manages the sequencer's transaction ordering and block creation.
@@ -39,10 +42,14 @@ public class SequencerState {
     private final ScheduledExecutorService scheduler;
     private ScheduledFuture<?> currentTimer;
 
-    public SequencerState(int maxTransactionsPerBlock, int blockTimeoutSeconds) {
+    // C.2: Sequencer's private key for signing blocks.
+    private final PrivateKey sequencerPrivateKey;
+
+    public SequencerState(int maxTransactionsPerBlock, int blockTimeoutSeconds, PrivateKey sequencerPrivateKey) {
         this.maxTransactionsPerBlock = maxTransactionsPerBlock;
         this.blockTimeoutMs = blockTimeoutSeconds * 1000L;
         this.scheduler = Executors.newScheduledThreadPool(1);
+        this.sequencerPrivateKey = sequencerPrivateKey;
     }
 
     /**
@@ -104,12 +111,21 @@ public class SequencerState {
             return;
         }
 
-        Block block = Block.newBuilder()
+        // Build the block without signature first.
+        Block unsignedBlock = Block.newBuilder()
                 .setBlockNumber(completedBlocks.size())
                 .addAllTransactions(currentBlockTransactions)
                 .build();
-                
-        completedBlocks.add(block);
+
+        // C.2: Sign the serialized unsigned block bytes.
+        byte[] signature = CryptoUtils.sign(sequencerPrivateKey, unsignedBlock.toByteArray());
+
+        // Rebuild the block with the signature included.
+        Block signedBlock = unsignedBlock.toBuilder()
+                .setSignature(ByteString.copyFrom(signature))
+                .build();
+
+        completedBlocks.add(signedBlock);
         currentBlockTransactions = new ArrayList<>();
         
         if (currentTimer != null && !currentTimer.isDone()) {
