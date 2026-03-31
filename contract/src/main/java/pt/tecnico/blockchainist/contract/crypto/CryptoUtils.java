@@ -30,6 +30,7 @@ public final class CryptoUtils {
         // Utility class.
     }
 
+    /** Generate a new RSA key pair (public + private). */
     public static KeyPair generateKeyPair() {
         try {
             KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(KEY_ALGORITHM);
@@ -40,6 +41,7 @@ public final class CryptoUtils {
         }
     }
 
+    /** Sign {@code data} with the given private key using SHA256withRSA. */
     public static byte[] sign(PrivateKey key, byte[] data) {
         try {
             Signature sig = Signature.getInstance(SIGNATURE_ALGORITHM);
@@ -51,6 +53,7 @@ public final class CryptoUtils {
         }
     }
 
+    /** Verify a SHA256withRSA signature against the given public key and data. */
     public static boolean verify(PublicKey key, byte[] data, byte[] signatureBytes) {
         try {
             Signature sig = Signature.getInstance(SIGNATURE_ALGORITHM);
@@ -62,6 +65,7 @@ public final class CryptoUtils {
         }
     }
 
+    /** Load a PKCS8 private key from a Base64-encoded file. */
     public static PrivateKey loadPrivateKey(String filePath) {
         try {
             String content = Files.readString(Path.of(filePath)).trim();
@@ -73,6 +77,7 @@ public final class CryptoUtils {
         }
     }
 
+    /** Decode a single X509 public key from a Base64 string. */
     public static PublicKey loadPublicKey(String base64Key) {
         try {
             byte[] keyBytes = Base64.getDecoder().decode(base64Key.trim());
@@ -83,6 +88,7 @@ public final class CryptoUtils {
         }
     }
 
+    /** Load all public keys from a file with lines in the format {@code <entityId> <base64Key>}. */
     public static Map<String, PublicKey> loadPublicKeys(String filePath) {
         try {
             List<String> lines = Files.readAllLines(Path.of(filePath));
@@ -107,6 +113,7 @@ public final class CryptoUtils {
         }
     }
 
+    /** Save a private key to a file as Base64-encoded PKCS8. */
     public static void savePrivateKey(PrivateKey key, String filePath) {
         try {
             Path path = Path.of(filePath);
@@ -121,6 +128,7 @@ public final class CryptoUtils {
         }
     }
 
+    /** Append a public key entry ({@code <entityId> <base64Key>}) to the given file. */
     public static void appendPublicKey(String entityId, PublicKey key, String filePath) {
         try {
             Path path = Path.of(filePath);

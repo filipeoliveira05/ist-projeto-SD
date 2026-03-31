@@ -74,6 +74,7 @@ public class CommandProcessor {
         return UUID.randomUUID().toString();
     }
 
+    /** C.2: Sign a protobuf request with the user's private key for authenticity. */
     private byte[] signRequest(String userId, Message unsignedRequest) {
         PrivateKey key = privateKeys.get(userId);
         if (key == null) {

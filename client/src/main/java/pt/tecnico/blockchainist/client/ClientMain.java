@@ -66,6 +66,7 @@ public class ClientMain {
         processor.userInputLoop();
     }
 
+    /** Load all user private keys from {@code *.priv} files in the given directory. */
     private static Map<String, PrivateKey> loadPrivateKeys(String keysDirPath) {
         File keysDir = new File(keysDirPath);
         if (!keysDir.exists() || !keysDir.isDirectory()) {

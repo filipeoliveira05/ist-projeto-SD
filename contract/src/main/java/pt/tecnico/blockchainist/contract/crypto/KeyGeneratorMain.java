@@ -66,6 +66,7 @@ public final class KeyGeneratorMain {
         }
     }
 
+    /** Ensure all required entities are present and none are duplicated. */
     private static void validateRequiredEntities(String[] entities) {
         Set<String> provided = new LinkedHashSet<>();
         for (String entityId : entities) {
