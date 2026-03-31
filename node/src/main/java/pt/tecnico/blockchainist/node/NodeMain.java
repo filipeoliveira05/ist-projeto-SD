@@ -39,6 +39,13 @@ public class NodeMain {
         final String publicKeysFile = args[3];
         final Map<String, PublicKey> publicKeys = CryptoUtils.loadPublicKeys(publicKeysFile);
         System.out.println("Loaded public keys: " + publicKeys.size());
+
+        // C.2: Retrieve the sequencer's public key for block signature verification.
+        PublicKey sequencerPublicKey = publicKeys.get("sequencer");
+        if (sequencerPublicKey == null) {
+            System.err.println("ERROR: Sequencer public key not found in " + publicKeysFile);
+            return;
+        }
         
         String[] sequencerSplit = sequencerAddress.split(":");
         String sequencerHost = sequencerSplit[0];
@@ -58,7 +65,7 @@ public class NodeMain {
         // C.1: Tracks requestIds of transfers applied speculatively (before block delivery).
         Set<String> speculativeTransfers = ConcurrentHashMap.newKeySet();
 
-        NodeSequencerClient sequencerClient = new NodeSequencerClient(sequencerStub, nodeState, pendingTransactions, completedTransactions, speculativeTransfers);
+        NodeSequencerClient sequencerClient = new NodeSequencerClient(sequencerStub, nodeState, pendingTransactions, completedTransactions, speculativeTransfers, sequencerPublicKey);
         final NodeServiceImpl nodeService = new NodeServiceImpl(
                 org,
                 publicKeys,
