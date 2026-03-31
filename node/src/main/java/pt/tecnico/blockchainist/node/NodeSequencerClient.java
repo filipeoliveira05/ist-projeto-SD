@@ -1,5 +1,6 @@
 package pt.tecnico.blockchainist.node;
 
+import java.security.PublicKey;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -9,6 +10,7 @@ import pt.tecnico.blockchainist.contract.DeliverBlockRequest;
 import pt.tecnico.blockchainist.contract.DeliverBlockResponse;
 import pt.tecnico.blockchainist.contract.SequencerServiceGrpc;
 import pt.tecnico.blockchainist.contract.Transaction;
+import pt.tecnico.blockchainist.contract.crypto.CryptoUtils;
 import pt.tecnico.blockchainist.node.domain.NodeState;
 
 /**
@@ -31,6 +33,9 @@ public class NodeSequencerClient implements Runnable {
     // C.1: Tracks requestIds of transfers applied speculatively by NodeServiceImpl.
     private final Set<String> speculativeTransfers;
 
+    // C.2: Sequencer's public key for block signature verification.
+    private final PublicKey sequencerPublicKey;
+
     // C.1: Lock shared with NodeServiceImpl for causal dependency notification.
     private Object dependencyLock;
 
@@ -42,12 +47,14 @@ public class NodeSequencerClient implements Runnable {
             NodeState nodeState,
             Map<String, CompletableFuture<Throwable>> pendingTransactions,
             Map<String, RequestResult> completedTransactions,
-            Set<String> speculativeTransfers) {
+            Set<String> speculativeTransfers,
+            PublicKey sequencerPublicKey) {
         this.stub = stub;
         this.nodeState = nodeState;
         this.pendingTransactions = pendingTransactions;
         this.completedTransactions = completedTransactions;
         this.speculativeTransfers = speculativeTransfers;
+        this.sequencerPublicKey = sequencerPublicKey;
     }
 
     /** C.1: Set the dependency lock shared with NodeServiceImpl for causal notifications. */
@@ -121,10 +128,32 @@ public class NodeSequencerClient implements Runnable {
 
     /** Execute each transaction in the block and append the block to the local blockchain. */
     private void processBlock(Block block) {
+        // C.2: Verify block signature before processing.
+        if (!verifyBlockSignature(block)) {
+            System.err.println("WARNING: Block " + block.getBlockNumber()
+                    + " has invalid signature! Skipping block.");
+            return;
+        }
         for (Transaction transaction : block.getTransactionsList()) {
             processTransaction(transaction);
         }
         nodeState.addBlock(block);
+    }
+
+    /**
+     * C.2: Verify the sequencer's digital signature on a block.
+     * Rebuilds the unsigned block (clearing the signature field) and
+     * verifies the signature against the serialized unsigned bytes.
+     */
+    private boolean verifyBlockSignature(Block block) {
+        if (sequencerPublicKey == null) {
+            return true; // No key = no verification.
+        }
+        Block unsigned = block.toBuilder().clearSignature().build();
+        return CryptoUtils.verify(
+                sequencerPublicKey,
+                unsigned.toByteArray(),
+                block.getSignature().toByteArray());
     }
 
     /**
