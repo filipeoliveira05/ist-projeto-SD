@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
@@ -77,6 +78,12 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
     // C.1: Lock used to wait for causal dependencies to be satisfied.
     private final Object dependencyLock = new Object();
 
+    // B.2: Flag indicating initial blockchain synchronization is complete.
+    // Reads (readBalance, getBlockchainState) block until this is true;
+    // writes (create, delete, transfer) can proceed immediately.
+    private final AtomicBoolean initialSyncComplete = new AtomicBoolean(false);
+    private final Object syncLock = new Object();
+
     public NodeServiceImpl(
             String nodeOrganization,
             Map<String, PublicKey> publicKeys,
@@ -94,6 +101,29 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
         this.pendingTransactions = pendingTransactions;
         this.completedTransactions = completedTransactions;
         this.speculativeTransfers = speculativeTransfers;
+    }
+
+    /** Signal that initial blockchain synchronization is complete, unblocking pending reads. */
+    public void markInitialSyncComplete() {
+        initialSyncComplete.set(true);
+        synchronized (syncLock) {
+            syncLock.notifyAll();
+        }
+    }
+
+    /** Block until initial blockchain synchronization is complete. */
+    private void waitForInitialSync() {
+        if (initialSyncComplete.get()) return;
+        synchronized (syncLock) {
+            while (!initialSyncComplete.get()) {
+                try {
+                    syncLock.wait();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
     }
 
     /**
@@ -356,6 +386,8 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
     @Override
     public void readBalance(ReadBalanceRequest request, StreamObserver<ReadBalanceResponse> responseObserver) {
         applyDelay();
+        // B.2: Wait for initial sync before serving reads.
+        waitForInitialSync();
         try {
             // Ensure reads observe all currently available ordered blocks before replying.
             sequencerClient.catchUpToLatest();
@@ -489,6 +521,8 @@ public class NodeServiceImpl extends NodeServiceGrpc.NodeServiceImplBase {
 
     @Override
     public void getBlockchainState(GetBlockchainStateRequest request, StreamObserver<GetBlockchainStateResponse> responseObserver) {
+        // B.2: Wait for initial sync before serving reads.
+        waitForInitialSync();
         try {
             // Keep debug reads consistent with the latest available sequenced blocks.
             sequencerClient.catchUpToLatest();

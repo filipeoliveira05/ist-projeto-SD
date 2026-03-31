@@ -79,12 +79,6 @@ public class NodeMain {
         // C.1: Share the dependency lock between NodeServiceImpl and NodeSequencerClient
         // so that both can notify threads waiting for causal dependencies.
         sequencerClient.setDependencyLock(nodeService.getDependencyLock());
-                
-        // B.2: Synchronize with the sequencer before accepting client requests.
-        // This ensures the node has the full blockchain even if it joins late.
-        int nextBlockNumber = sequencerClient.syncInitialBlocks();
-        sequencerClient.setNextBlockNumber(nextBlockNumber);
-        System.out.println("Initial synchronization complete. Next block number: " + nextBlockNumber);
 
         // Register the DelayInterceptor to extract delay metadata from client requests.
         Server server = ServerBuilder.forPort(port)
@@ -99,11 +93,19 @@ public class NodeMain {
             sequencerChannel.shutdown();
         }));
 
+        // B.2: Start the server before initial sync so writes (create, delete, transfer)
+        // can be accepted immediately. Reads block until sync completes.
         server.start();
-
-        // Start the background thread that polls the sequencer for new blocks.
-        new Thread(sequencerClient, "sequencer-polling-thread").start();
         System.out.println("Server started, listening on " + port);
+
+        // B.2: Synchronize with the sequencer. Reads wait for this to complete.
+        int nextBlockNumber = sequencerClient.syncInitialBlocks();
+        sequencerClient.setNextBlockNumber(nextBlockNumber);
+        nodeService.markInitialSyncComplete();
+        System.out.println("Initial synchronization complete. Next block number: " + nextBlockNumber);
+
+        // Start the background thread that requests blocks from the sequencer.
+        new Thread(sequencerClient, "sequencer-polling-thread").start();
 
         server.awaitTermination();
     }
