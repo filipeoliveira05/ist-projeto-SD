@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import io.grpc.StatusRuntimeException;
 
@@ -43,7 +44,10 @@ public class NodeSequencerClient implements Runnable {
     private Object dependencyLock;
 
     // The next block number this node expects from the sequencer.
-    private int nextBlockNumber = 0;
+    private final AtomicInteger nextBlockNumber = new AtomicInteger(0);
+
+    // Dedicated lock for block processing coordination between run() and catchUpToLatest().
+    private final Object blockProcessingLock = new Object();
 
     public NodeSequencerClient(
             SequencerServiceGrpc.SequencerServiceBlockingStub stub,
@@ -73,40 +77,48 @@ public class NodeSequencerClient implements Runnable {
         return catchUpToLatest();
     }
 
-    public synchronized void setNextBlockNumber(int nextBlockNumber) {
-        if (nextBlockNumber < 0) {
+    public void setNextBlockNumber(int blockNumber) {
+        if (blockNumber < 0) {
             throw new IllegalArgumentException("nextBlockNumber cannot be negative");
         }
-        this.nextBlockNumber = nextBlockNumber;
+        this.nextBlockNumber.set(blockNumber);
     }
 
     /**
      * Process all available blocks up to the latest; used by readBalance/getBlockchainState.
      * Uses a short-deadline RPC so it returns as soon as there are no more blocks available
      * (the blocking deliverBlock on the sequencer would otherwise wait indefinitely).
+     * Does not hold any lock during the network call — only acquires blockProcessingLock
+     * briefly to process the block and advance the counter.
      */
-    public synchronized int catchUpToLatest() {
+    public int catchUpToLatest() {
         while (true) {
+            int expected = nextBlockNumber.get();
             DeliverBlockRequest request = DeliverBlockRequest.newBuilder()
-                    .setBlockNumber(nextBlockNumber)
+                    .setBlockNumber(expected)
                     .build();
+            DeliverBlockResponse response;
             try {
                 // Short deadline: if no block exists yet, the sequencer will block;
                 // DEADLINE_EXCEEDED tells us we are caught up.
-                DeliverBlockResponse response = stub
+                response = stub
                         .withDeadlineAfter(500, TimeUnit.MILLISECONDS)
                         .deliverBlock(request);
-                if (!response.hasBlock()) {
-                    return nextBlockNumber;
-                }
-                processBlock(response.getBlock());
-                nextBlockNumber++;
             } catch (StatusRuntimeException e) {
                 if (e.getStatus().getCode() == io.grpc.Status.Code.DEADLINE_EXCEEDED) {
                     // No new block available — we are caught up.
-                    return nextBlockNumber;
+                    return nextBlockNumber.get();
                 }
                 throw e;
+            }
+            if (!response.hasBlock()) {
+                return nextBlockNumber.get();
+            }
+            synchronized (blockProcessingLock) {
+                // Only process if run() hasn't already handled this block.
+                if (nextBlockNumber.compareAndSet(expected, expected + 1)) {
+                    processBlock(response.getBlock());
+                }
             }
         }
     }
@@ -120,14 +132,17 @@ public class NodeSequencerClient implements Runnable {
     public void run() {
         while (true) {
             try {
+                int expected = nextBlockNumber.get();
                 DeliverBlockRequest request = DeliverBlockRequest.newBuilder()
-                        .setBlockNumber(nextBlockNumber)
+                        .setBlockNumber(expected)
                         .build();
                 // No deadline: the sequencer will block until this block is ready.
                 DeliverBlockResponse response = stub.deliverBlock(request);
-                synchronized (this) {
-                    processBlock(response.getBlock());
-                    nextBlockNumber++;
+                synchronized (blockProcessingLock) {
+                    // Only process if catchUpToLatest() hasn't already handled this block.
+                    if (nextBlockNumber.compareAndSet(expected, expected + 1)) {
+                        processBlock(response.getBlock());
+                    }
                 }
             } catch (StatusRuntimeException e) {
                 System.err.println("Error fetching block from sequencer: " + e.getMessage());
@@ -206,15 +221,14 @@ public class NodeSequencerClient implements Runnable {
                                 transaction.getTransfer().getDstWalletId(), transaction.getTransfer().getValue());
                         break;
                     default:
-                        System.out.println("Unknown operation: " + transaction.getOperationCase());
+                        System.err.println("Unknown operation: " + transaction.getOperationCase());
                 }
-                System.out.println("Processed transaction: " + transaction);
             } catch (Exception e) {
                 error = e;
                 System.err.println("Error processing transaction: " + e.getMessage());
             }
         } else {
-            System.out.println("Skipped speculative transfer (already applied): " + requestId);
+            // C.1: Already applied speculatively, no re-execution needed.
         }
 
         // Cache the result so that retried requests can return immediately.
