@@ -48,15 +48,24 @@ public class SequencerServiceImpl extends SequencerServiceGrpc.SequencerServiceI
         responseObserver.onCompleted();
     }
 
-    /** Deliver a completed block by block number (B.1 block-based delivery). */
+    /**
+     * Deliver a completed block by block number (B.1 block-based delivery).
+     * Blocks the RPC until the requested block is available, eliminating
+     * the need for busy-wait polling on the node side.
+     */
     @Override
     public void deliverBlock(DeliverBlockRequest request, StreamObserver<DeliverBlockResponse> responseObserver) {
-        Block block = sequencerState.getBlock(request.getBlockNumber());
-        DeliverBlockResponse.Builder responseBuilder = DeliverBlockResponse.newBuilder();
-        if (block != null) {
-            responseBuilder.setBlock(block);
+        try {
+            Block block = sequencerState.getBlockBlocking(request.getBlockNumber());
+            DeliverBlockResponse response = DeliverBlockResponse.newBuilder()
+                    .setBlock(block)
+                    .build();
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            responseObserver.onError(
+                    io.grpc.Status.CANCELLED.withDescription("Interrupted while waiting for block").asRuntimeException());
         }
-        responseObserver.onNext(responseBuilder.build());
-        responseObserver.onCompleted();
     }
 }

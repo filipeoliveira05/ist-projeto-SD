@@ -4,6 +4,9 @@ import java.security.PublicKey;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+
+import io.grpc.StatusRuntimeException;
 
 import pt.tecnico.blockchainist.contract.Block;
 import pt.tecnico.blockchainist.contract.DeliverBlockRequest;
@@ -62,9 +65,12 @@ public class NodeSequencerClient implements Runnable {
         this.dependencyLock = dependencyLock;
     }
 
-    /** Fetch all existing blocks from the sequencer (used at startup for B.2 sync). */
+    /**
+     * Fetch all existing blocks from the sequencer (used at startup for B.2 sync).
+     * Uses catchUpToLatest() which drains available blocks with a short deadline.
+     */
     public int syncInitialBlocks() {
-        return drainAvailableBlocks(0);
+        return catchUpToLatest();
     }
 
     public synchronized void setNextBlockNumber(int nextBlockNumber) {
@@ -74,24 +80,63 @@ public class NodeSequencerClient implements Runnable {
         this.nextBlockNumber = nextBlockNumber;
     }
 
-    /** Process all available blocks up to the latest; used by readBalance/getBlockchainState. */
+    /**
+     * Process all available blocks up to the latest; used by readBalance/getBlockchainState.
+     * Uses a short-deadline RPC so it returns as soon as there are no more blocks available
+     * (the blocking deliverBlock on the sequencer would otherwise wait indefinitely).
+     */
     public synchronized int catchUpToLatest() {
-        catchUpFromCurrentPosition();
-        return nextBlockNumber;
+        while (true) {
+            DeliverBlockRequest request = DeliverBlockRequest.newBuilder()
+                    .setBlockNumber(nextBlockNumber)
+                    .build();
+            try {
+                // Short deadline: if no block exists yet, the sequencer will block;
+                // DEADLINE_EXCEEDED tells us we are caught up.
+                DeliverBlockResponse response = stub
+                        .withDeadlineAfter(500, TimeUnit.MILLISECONDS)
+                        .deliverBlock(request);
+                if (!response.hasBlock()) {
+                    return nextBlockNumber;
+                }
+                processBlock(response.getBlock());
+                nextBlockNumber++;
+            } catch (StatusRuntimeException e) {
+                if (e.getStatus().getCode() == io.grpc.Status.Code.DEADLINE_EXCEEDED) {
+                    // No new block available — we are caught up.
+                    return nextBlockNumber;
+                }
+                throw e;
+            }
+        }
     }
 
-    /** Background polling loop: continuously fetches new blocks from the sequencer. */
+    /**
+     * Background loop: requests blocks from the sequencer one at a time.
+     * Each deliverBlock call blocks on the sequencer side until the block exists,
+     * so there is no busy-wait polling.
+     */
     @Override
     public void run() {
         while (true) {
             try {
-                boolean advanced = catchUpFromCurrentPosition();
-                if (!advanced) {
-                    Thread.sleep(100); // Polling interval
+                DeliverBlockRequest request = DeliverBlockRequest.newBuilder()
+                        .setBlockNumber(nextBlockNumber)
+                        .build();
+                // No deadline: the sequencer will block until this block is ready.
+                DeliverBlockResponse response = stub.deliverBlock(request);
+                synchronized (this) {
+                    processBlock(response.getBlock());
+                    nextBlockNumber++;
                 }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+            } catch (StatusRuntimeException e) {
+                System.err.println("Error fetching block from sequencer: " + e.getMessage());
+                try {
+                    Thread.sleep(1000); // Backoff on error
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             } catch (Exception e) {
                 System.err.println("Error in sequencer polling loop: " + e.getMessage());
                 try {
@@ -101,28 +146,6 @@ public class NodeSequencerClient implements Runnable {
                     break;
                 }
             }
-        }
-    }
-
-    private synchronized boolean catchUpFromCurrentPosition() {
-        int previousBlockNumber = nextBlockNumber;
-        nextBlockNumber = drainAvailableBlocks(previousBlockNumber);
-        return nextBlockNumber != previousBlockNumber;
-    }
-
-    /** Request blocks sequentially until the sequencer has no more to deliver. */
-    private int drainAvailableBlocks(int startBlockNumber) {
-        int currentBlockNumber = startBlockNumber;
-        while (true) {
-            DeliverBlockRequest request = DeliverBlockRequest.newBuilder()
-                    .setBlockNumber(currentBlockNumber)
-                    .build();
-            DeliverBlockResponse response = stub.deliverBlock(request);
-            if (!response.hasBlock()) {
-                return currentBlockNumber;
-            }
-            processBlock(response.getBlock());
-            currentBlockNumber++;
         }
     }
 

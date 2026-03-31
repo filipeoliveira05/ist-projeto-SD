@@ -143,6 +143,17 @@ public class SequencerState {
         return null;
     }
 
+    /**
+     * Return the block with the given number, blocking until it is available.
+     * The caller thread will wait() until closeCurrentBlock() calls notifyAll().
+     */
+    public synchronized Block getBlockBlocking(int blockNumber) throws InterruptedException {
+        while (blockNumber < 0 || blockNumber >= completedBlocks.size()) {
+            wait();
+        }
+        return completedBlocks.get(blockNumber);
+    }
+
     /** Return the transaction at the given sequence number, or null if not yet available (A.2). */
     public synchronized Transaction getNextTransaction(int lastSeenSeqNumber) {
         // If the node has seen 'lastSeenSeqNumber' transactions, 
