@@ -17,7 +17,7 @@ NC='\033[0m'
 ################################################
 
 exec_client() {
-    mvn --quiet -f "$MVN_ROOT_POM" -pl client exec:java < $1 > $2
+    (cd "$MVN_ROOT_DIR" && mvn --quiet -f "$MVN_ROOT_POM" -pl client exec:java < $1 > $2)
 }
 
 ################################################
